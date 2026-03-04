@@ -27,7 +27,7 @@ import { useAuth } from "@/lib/AuthContext";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export default function Dashboard() {
-  const { user, loading, subscription, subLoading, signOut, getIdToken } = useAuth();
+  const { user, loading, subscription, subLoading, signOut, getIdToken, refreshSubscription } = useAuth();
   const router = useRouter();
   const [userName, setUserName] = useState<string | null>(null);
 
@@ -244,6 +244,7 @@ export default function Dashboard() {
         fixture.start_time_utc
       );
       setAnalysis(result);
+      refreshSubscription();
     } catch (e: any) {
       setAnalysisError(e.message || "Verifică conexiunea la server.");
     } finally {
@@ -285,6 +286,7 @@ export default function Dashboard() {
     try {
       const result = await apiAnalyzeTicket(ticket);
       setRiskAnalysis(result);
+      refreshSubscription();
     } catch (e: any) {
       setAnalysisError(e.message || "Eroare evaluare risc.");
     } finally {
@@ -373,6 +375,22 @@ export default function Dashboard() {
 
           {/* Spacer */}
           <div className="flex-1" />
+
+          {/* Usage counters */}
+          {subscription && subscription.daily_usage && (
+            <div className="flex items-center gap-2">
+              {subscription.tier_limits?.max_analyses_per_day !== null && (
+                <span className="badge bg-[rgba(99,102,241,0.08)] text-primary text-[11px] font-mono border border-primary/15">
+                  Analize: {subscription.daily_usage.analyses}/{subscription.tier_limits?.max_analyses_per_day ?? 0}
+                </span>
+              )}
+              {subscription.tier_limits?.has_risk_analyzer && subscription.tier_limits?.max_risk_analyses_per_day !== null && (
+                <span className="badge bg-[rgba(168,85,247,0.08)] text-violet text-[11px] font-mono border border-violet/15">
+                  Scanări: {subscription.daily_usage.risk_analyses}/{subscription.tier_limits?.max_risk_analyses_per_day ?? 0}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Matches count */}
           <span className="badge bg-primary-soft text-primary text-[11px] font-mono">

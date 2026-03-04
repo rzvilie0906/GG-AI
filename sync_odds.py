@@ -27,7 +27,8 @@ LEAGUE_MAP = {
     "nba": "basketball_nba",
     "euroleague": "basketball_euroleague",
     "nhl": "icehockey_nhl",
-    "mlb": "baseball_mlb"
+    "mlb": "baseball_mlb",
+    "mlb_preseason": "baseball_mlb_preseason"
 }
 
 def init_db():
