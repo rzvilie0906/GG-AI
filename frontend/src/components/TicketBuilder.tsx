@@ -1,7 +1,32 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { TicketPick } from "@/lib/types";
-import { ShoppingBag, Shield } from "./Icons";
+import { ShoppingBag, Shield, Clock } from "./Icons";
+
+function RiskCountdown({ resetAt }: { resetAt: string }) {
+  const [timeLeft, setTimeLeft] = useState("");
+
+  useEffect(() => {
+    function update() {
+      const diff = new Date(resetAt).getTime() - Date.now();
+      if (diff <= 0) { setTimeLeft("00:00:00"); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setTimeLeft(`${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`);
+    }
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [resetAt]);
+
+  return (
+    <span className="font-mono text-sm font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+      {timeLeft}
+    </span>
+  );
+}
 
 interface TicketBuilderProps {
   ticket: TicketPick[];
@@ -9,9 +34,11 @@ interface TicketBuilderProps {
   onVerify?: () => void;
   isVerifying: boolean;
   disabled?: boolean;
+  riskQuotaResetAt?: string | null;
+  riskQuotaMessage?: string | null;
 }
 
-export default function TicketBuilder({ ticket, onRemovePick, onVerify, isVerifying, disabled }: TicketBuilderProps) {
+export default function TicketBuilder({ ticket, onRemovePick, onVerify, isVerifying, disabled, riskQuotaResetAt, riskQuotaMessage }: TicketBuilderProps) {
   return (
     <div className="card p-3.5 border-primary/10">
       {/* Header */}
@@ -52,14 +79,37 @@ export default function TicketBuilder({ ticket, onRemovePick, onVerify, isVerify
         )}
       </div>
 
+      {/* Risk Quota Lock */}
+      {riskQuotaResetAt && (
+        <div className="mb-3 p-3 rounded-xl border border-primary/20 bg-primary/5 text-center">
+          <div className="flex items-center justify-center gap-2 mb-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <span className="text-xs font-bold text-text-main">Limită atinsă</span>
+          </div>
+          <div className="text-[11px] text-text-muted leading-relaxed mb-2">
+            {riskQuotaMessage || "Ai atins limita zilnică de analize de risc."}
+          </div>
+          <div className="inline-flex items-center gap-2 bg-surface-elevated/60 border border-[rgba(255,255,255,0.08)] px-3 py-1.5 rounded-lg">
+            <Clock className="text-primary opacity-80" size={12} />
+            <div className="flex flex-col items-start">
+              <span className="text-[9px] uppercase tracking-widest text-text-muted font-semibold">Se resetează în</span>
+              <RiskCountdown resetAt={riskQuotaResetAt} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Verify Button */}
       <button
         onClick={onVerify}
-        disabled={ticket.length < 2 || isVerifying || disabled || !onVerify}
+        disabled={ticket.length < 2 || isVerifying || disabled || !onVerify || !!riskQuotaResetAt}
         className="btn btn-primary w-full text-sm"
       >
         <Shield size={14} />
-        {disabled ? "🔒 Disponibil pe Pro/Elite" : isVerifying ? "Se procesează..." : "Scanează Riscul (AI)"}
+        {disabled ? "🔒 Disponibil pe Pro/Elite" : riskQuotaResetAt ? "🔒 Limită atinsă" : isVerifying ? "Se procesează..." : "Scanează Riscul (AI)"}
       </button>
     </div>
   );
