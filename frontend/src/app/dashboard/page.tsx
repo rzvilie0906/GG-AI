@@ -221,8 +221,18 @@ export default function Dashboard() {
     setAnalysis(null);
     setAnalysisError(null);
     setQuotaResetAt(null);
-    setAnalysisLoading(true);
     setPickInput("");
+
+    // Preemptive quota check
+    const maxAnalyses = subscription?.tier_limits?.max_analyses_per_day;
+    const usedAnalyses = subscription?.daily_usage?.analyses ?? 0;
+    if (maxAnalyses !== null && maxAnalyses !== undefined && usedAnalyses >= maxAnalyses) {
+      setQuotaResetAt(subscription?.reset_at || null);
+      setAnalysisError(`Ai atins limita zilnic\u0103 de ${maxAnalyses} analize. Upgrade la un plan superior pentru analize nelimitate.`);
+      return;
+    }
+
+    setAnalysisLoading(true);
     isAnalyzingRef.current = true;
 
     const matchDate = selectedDate || new Date().toISOString().slice(0, 10);
@@ -247,7 +257,7 @@ export default function Dashboard() {
         fixture.start_time_utc
       );
       setAnalysis(result);
-      refreshSubscription();
+      await refreshSubscription(true);
     } catch (e: any) {
       if (e.isQuotaError && e.resetAt) {
         setQuotaResetAt(e.resetAt);
@@ -281,6 +291,18 @@ export default function Dashboard() {
   async function handleVerifyTicket() {
     if (ticket.length < 2) return;
 
+    // Preemptive risk quota check
+    const maxRisk = subscription?.tier_limits?.max_risk_analyses_per_day;
+    const usedRisk = subscription?.daily_usage?.risk_analyses ?? 0;
+    if (maxRisk !== null && maxRisk !== undefined && usedRisk >= maxRisk) {
+      setIsRiskMode(true);
+      setAnalysis(null);
+      setRiskAnalysis(null);
+      setRiskQuotaResetAt(subscription?.reset_at || null);
+      setAnalysisError(`Ai atins limita zilnic\u0103 de ${maxRisk} analize de risc. Upgrade la Elite pentru analize nelimitate.`);
+      return;
+    }
+
     setIsVerifying(true);
     setIsRiskMode(true);
     setAnalysis(null);
@@ -293,10 +315,11 @@ export default function Dashboard() {
     try {
       const result = await apiAnalyzeTicket(ticket);
       setRiskAnalysis(result);
-      refreshSubscription();
+      await refreshSubscription(true);
     } catch (e: any) {
       if (e.isQuotaError && e.resetAt) {
         setRiskQuotaResetAt(e.resetAt);
+        await refreshSubscription(true);
       }
       setAnalysisError(e.message || "Eroare evaluare risc.");
     } finally {
@@ -325,6 +348,15 @@ export default function Dashboard() {
   const hasRiskAnalyzer = plan === "pro" || plan === "elite";
   const unlimitedAnalyses = plan === "pro" || plan === "elite";
   const unlimitedRisk = plan === "elite";
+
+  // ── Preemptive quota locks ──
+  const maxAnalyses = subscription.tier_limits?.max_analyses_per_day;
+  const usedAnalyses = subscription.daily_usage?.analyses ?? 0;
+  const analysisQuotaExceeded = maxAnalyses !== null && maxAnalyses !== undefined && usedAnalyses >= maxAnalyses;
+
+  const maxRisk = subscription.tier_limits?.max_risk_analyses_per_day;
+  const usedRisk = subscription.daily_usage?.risk_analyses ?? 0;
+  const riskQuotaExceeded = hasRiskAnalyzer && maxRisk !== null && maxRisk !== undefined && usedRisk >= maxRisk;
 
   return (
     <div className="h-screen overflow-hidden">
@@ -475,6 +507,9 @@ export default function Dashboard() {
             onAddPick={handleAddPick}
             addedFeedback={addedFeedback}
             quotaResetAt={isRiskMode ? riskQuotaResetAt : quotaResetAt}
+            analysisQuotaLocked={analysisQuotaExceeded}
+            analysisResetAt={analysisQuotaExceeded ? (subscription.reset_at || null) : null}
+            analysisQuotaMessage={analysisQuotaExceeded ? `Ai atins limita zilnică de ${maxAnalyses} analize. Upgrade la un plan superior pentru analize nelimitate.` : null}
           />
         </section>
 
@@ -488,6 +523,8 @@ export default function Dashboard() {
               onVerify={hasRiskAnalyzer ? handleVerifyTicket : undefined}
               isVerifying={isVerifying}
               disabled={!hasRiskAnalyzer}
+              riskQuotaResetAt={(riskQuotaExceeded ? subscription.reset_at : riskQuotaResetAt) || null}
+              riskQuotaMessage={(riskQuotaExceeded || riskQuotaResetAt) ? `Ai atins limita zilnică de ${maxRisk} analize de risc. Upgrade la Elite pentru analize nelimitate.` : null}
             />
 
             {!hasRiskAnalyzer && (

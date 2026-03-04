@@ -41,6 +41,7 @@ export interface SubscriptionInfo {
     has_risk_analyzer: boolean;
   };
   daily_usage?: DailyUsage;
+  reset_at?: string;
 }
 
 interface AuthContextType {
@@ -54,7 +55,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resendVerification: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
-  refreshSubscription: () => Promise<void>;
+  refreshSubscription: (silent?: boolean) => Promise<void>;
   getIdToken: () => Promise<string | null>;
 }
 
@@ -108,13 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   // Fetch subscription status from backend
-  const refreshSubscription = useCallback(async () => {
+  const refreshSubscription = useCallback(async (silent = false) => {
     if (MOCK_AUTH) return;
     if (!user) {
       setSubscription(null);
       return;
     }
-    setSubLoading(true);
+    if (!silent) setSubLoading(true);
     try {
       const token = await user.getIdToken();
       const res = await fetch(`${API_BASE}/api/billing/me`, {
@@ -123,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setSubscription(data);
-      } else {
+      } else if (!silent) {
         setSubscription({
           plan: null,
           status: "inactive",
@@ -131,13 +132,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch {
-      setSubscription({
-        plan: null,
-        status: "inactive",
-        current_period_end: null,
-      });
+      if (!silent) {
+        setSubscription({
+          plan: null,
+          status: "inactive",
+          current_period_end: null,
+        });
+      }
     } finally {
-      setSubLoading(false);
+      if (!silent) setSubLoading(false);
     }
   }, [user]);
 

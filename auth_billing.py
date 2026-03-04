@@ -184,9 +184,20 @@ def _get_user_by_stripe_customer(customer_id: str) -> Optional[dict]:
         return dict(row)
     return None
 
+def _usage_date_key() -> str:
+    """
+    Return the 'usage date' key aligned with the 10:00 Romanian-time reset.
+    Before 10:00 Romania → previous calendar day.  After 10:00 → today.
+    """
+    ro_tz = ZoneInfo("Europe/Bucharest")
+    now_ro = datetime.now(ro_tz)
+    if now_ro.hour < 10:
+        return (now_ro - timedelta(days=1)).strftime("%Y-%m-%d")
+    return now_ro.strftime("%Y-%m-%d")
+
 def _get_daily_usage(uid: str) -> dict:
-    """Get today's usage counts for a user."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    """Get today's usage counts for a user (aligned with 10:00 RO reset)."""
+    today = _usage_date_key()
     conn = _users_connect()
     row = conn.execute(
         "SELECT analyses_count, risk_analyses_count FROM daily_usage WHERE uid = ? AND usage_date = ?",
@@ -198,8 +209,8 @@ def _get_daily_usage(uid: str) -> dict:
     return {"analyses": 0, "risk_analyses": 0}
 
 def _increment_usage(uid: str, column: str):
-    """Increment a usage counter for today."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    """Increment a usage counter for today (aligned with 10:00 RO reset)."""
+    today = _usage_date_key()
     conn = _users_connect()
     conn.execute("""
         INSERT INTO daily_usage (uid, usage_date, analyses_count, risk_analyses_count)
@@ -503,6 +514,9 @@ async def get_billing_me(authorization: Optional[str] = Header(default=None)):
     # Also include daily usage
     usage = _get_daily_usage(uid)
     result["daily_usage"] = usage
+
+    # Include reset_at so frontend can show countdown timer
+    result["reset_at"] = _next_reset_iso()
 
     return result
 

@@ -17,6 +17,9 @@ interface AnalysisPanelProps {
   onAddPick: () => void;
   addedFeedback: boolean;
   quotaResetAt?: string | null;
+  analysisQuotaLocked?: boolean;
+  analysisResetAt?: string | null;
+  analysisQuotaMessage?: string | null;
 }
 
 // ── Countdown Timer ──
@@ -207,7 +210,48 @@ export default function AnalysisPanel({
   onAddPick,
   addedFeedback,
   quotaResetAt,
+  analysisQuotaLocked,
+  analysisResetAt,
+  analysisQuotaMessage,
 }: AnalysisPanelProps) {
+  // ── Locked state: quota exceeded, show full-panel lock ──
+  if (analysisQuotaLocked && !isRiskMode) {
+    return (
+      <div className="card p-5 animate-fade-in">
+        <div className="flex flex-col items-center justify-center py-16 gap-5">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+          <div className="text-center max-w-md">
+            <div className="font-bold text-lg text-text-main mb-2">
+              Limită analize zilnice atinsă
+            </div>
+            <div className="text-text-muted text-sm mb-5 leading-relaxed">
+              {analysisQuotaMessage || "Ai epuizat analizele disponibile pentru astăzi. Limita se va reseta automat."}
+            </div>
+            {analysisResetAt && (
+              <div className="inline-flex items-center gap-3 bg-surface-elevated/60 border border-[rgba(255,255,255,0.08)] px-6 py-4 rounded-xl">
+                <Clock className="text-primary opacity-80" size={18} />
+                <div className="flex flex-col items-start">
+                  <span className="text-[10px] uppercase tracking-widest text-text-muted font-semibold">Se resetează în</span>
+                  <CountdownTimer resetAt={analysisResetAt} />
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="mt-2">
+            <a href="/pricing" className="btn bg-primary/10 text-primary hover:bg-primary/20 text-sm px-5 py-2 rounded-lg border border-primary/20 transition-all">
+              Upgrade pentru analize nelimitate
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Empty state
   if (!selectedMatch && !isRiskMode) {
     return (
