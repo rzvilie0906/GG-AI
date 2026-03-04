@@ -164,6 +164,18 @@ export async function analyzeMatch(
   });
 
   if (!r.ok) {
+    if (r.status === 429) {
+      const errData = await r.json().catch(() => ({}));
+      let parsed: any = {};
+      try {
+        parsed = typeof errData.detail === "string" ? JSON.parse(errData.detail) : errData.detail || {};
+      } catch { parsed = { message: errData.detail }; }
+      const err: any = new Error(parsed.message || "Ai atins limita zilnică. Revino mai târziu.");
+      err.resetAt = parsed.reset_at || null;
+      err.quotaLimit = parsed.limit || null;
+      err.isQuotaError = true;
+      throw err;
+    }
     const errText = await r.text().catch(() => "");
     throw new Error(`HTTP ${r.status}: ${errText}`);
   }
@@ -188,7 +200,15 @@ export async function analyzeTicket(picks: TicketPick[]): Promise<RiskAnalysis> 
   if (!r.ok) {
     if (r.status === 429) {
       const errData = await r.json().catch(() => ({}));
-      throw new Error(errData.detail || "Ai atins limita zilnică de analize de risc. Revino mâine.");
+      let parsed: any = {};
+      try {
+        parsed = typeof errData.detail === "string" ? JSON.parse(errData.detail) : errData.detail || {};
+      } catch { parsed = { message: errData.detail }; }
+      const err: any = new Error(parsed.message || "Ai atins limita zilnică de analize de risc. Revino mai târziu.");
+      err.resetAt = parsed.reset_at || null;
+      err.quotaLimit = parsed.limit || null;
+      err.isQuotaError = true;
+      throw err;
     }
     throw new Error("Server Error");
   }
