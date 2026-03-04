@@ -16,7 +16,8 @@ import os
 import json
 import sqlite3
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 import stripe
@@ -303,6 +304,18 @@ def get_user_subscription(uid: str) -> dict:
     }
 
 
+def _next_reset_iso() -> str:
+    """Return the next 10:00 Romanian time as an ISO-8601 UTC string."""
+    ro_tz = ZoneInfo("Europe/Bucharest")
+    now_ro = datetime.now(ro_tz)
+    reset_today = now_ro.replace(hour=10, minute=0, second=0, microsecond=0)
+    if now_ro >= reset_today:
+        reset_next = reset_today + timedelta(days=1)
+    else:
+        reset_next = reset_today
+    return reset_next.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def check_analysis_quota(uid: str, plan: str) -> None:
     """Raise 429 if user exceeded their daily analysis quota."""
     limits = TIER_LIMITS.get(plan, {})
@@ -313,7 +326,11 @@ def check_analysis_quota(uid: str, plan: str) -> None:
     if usage["analyses"] >= max_analyses:
         raise HTTPException(
             status_code=429,
-            detail=f"Ai atins limita zilnică de {max_analyses} analize. Upgrade la un plan superior pentru analize nelimitate."
+            detail=json.dumps({
+                "message": f"Ai atins limita zilnică de {max_analyses} analize. Upgrade la un plan superior pentru analize nelimitate.",
+                "reset_at": _next_reset_iso(),
+                "limit": max_analyses,
+            }),
         )
 
 
@@ -332,7 +349,11 @@ def check_risk_quota(uid: str, plan: str) -> None:
     if usage["risk_analyses"] >= max_risk:
         raise HTTPException(
             status_code=429,
-            detail=f"Ai atins limita zilnică de {max_risk} analize de risc. Upgrade la Elite pentru analize nelimitate."
+            detail=json.dumps({
+                "message": f"Ai atins limita zilnică de {max_risk} analize de risc. Upgrade la Elite pentru analize nelimitate.",
+                "reset_at": _next_reset_iso(),
+                "limit": max_risk,
+            }),
         )
 
 

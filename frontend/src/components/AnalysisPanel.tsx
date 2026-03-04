@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Fixture, AnalysisResult, MainBet, SecondaryBet, OddsEntry, RiskAnalysis } from "@/lib/types";
 import { fmtTime } from "@/lib/utils";
 import { Flag, Clock, Box3D, XCircle, Target, Layers, TrendingUp } from "./Icons";
@@ -15,6 +16,40 @@ interface AnalysisPanelProps {
   setPickInput: (v: string) => void;
   onAddPick: () => void;
   addedFeedback: boolean;
+  quotaResetAt?: string | null;
+}
+
+// ── Countdown Timer ──
+
+function CountdownTimer({ resetAt }: { resetAt: string }) {
+  const [timeLeft, setTimeLeft] = useState("");
+
+  useEffect(() => {
+    function update() {
+      const now = Date.now();
+      const target = new Date(resetAt).getTime();
+      const diff = target - now;
+      if (diff <= 0) {
+        setTimeLeft("00:00:00");
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setTimeLeft(
+        `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+      );
+    }
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [resetAt]);
+
+  return (
+    <span className="font-mono text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+      {timeLeft}
+    </span>
+  );
 }
 
 function statusLabel(norm: string): string {
@@ -171,6 +206,7 @@ export default function AnalysisPanel({
   setPickInput,
   onAddPick,
   addedFeedback,
+  quotaResetAt,
 }: AnalysisPanelProps) {
   // Empty state
   if (!selectedMatch && !isRiskMode) {
@@ -266,7 +302,33 @@ export default function AnalysisPanel({
             </div>
           )}
 
-          {error && !isLoading && (
+          {error && !isLoading && quotaResetAt && (
+            <div className="flex flex-col items-center justify-center py-10 gap-4 animate-fade-in">
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </div>
+              <div className="text-center max-w-md">
+                <div className="font-bold text-base text-text-main mb-1.5">
+                  {isRiskMode ? "Limită analize de risc atinsă" : "Limită analize zilnice atinsă"}
+                </div>
+                <div className="text-text-muted text-xs mb-4 leading-relaxed">
+                  {error}
+                </div>
+                <div className="inline-flex items-center gap-3 bg-surface-elevated/60 border border-[rgba(255,255,255,0.08)] px-5 py-3 rounded-xl">
+                  <Clock className="text-primary opacity-80" size={16} />
+                  <div className="flex flex-col items-start">
+                    <span className="text-[10px] uppercase tracking-widest text-text-muted font-semibold">Se resetează în</span>
+                    <CountdownTimer resetAt={quotaResetAt} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && !isLoading && !quotaResetAt && (
             <div className="flex items-center gap-3 p-4 bg-danger/5 border border-danger/10 rounded-xl">
               <XCircle className="text-danger flex-shrink-0" />
               <div>
@@ -288,7 +350,7 @@ export default function AnalysisPanel({
         </div>
 
         {/* Section 2: Main Bet */}
-        {!isRiskMode && (
+        {!isRiskMode && !quotaResetAt && (
           <div className="card p-5">
             <div className="section-header">
               <Target className="text-primary" size={14} />
@@ -303,7 +365,7 @@ export default function AnalysisPanel({
         )}
 
         {/* Section 3: Secondary Bets */}
-        {!isRiskMode && (
+        {!isRiskMode && !quotaResetAt && (
           <div className="card p-5">
             <div className="section-header">
               <Layers className="text-primary" size={14} />
@@ -321,7 +383,7 @@ export default function AnalysisPanel({
         )}
 
         {/* Section 4: Odds */}
-        {!isRiskMode && (
+        {!isRiskMode && !quotaResetAt && (
           <div className="card p-5 lg:col-span-2">
             <div className="section-header">
               <TrendingUp className="text-primary" size={14} />

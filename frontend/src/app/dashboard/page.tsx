@@ -68,6 +68,7 @@ export default function Dashboard() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [quotaResetAt, setQuotaResetAt] = useState<string | null>(null);
 
   const [ticket, setTicket] = useState<TicketPick[]>([]);
   const [pickInput, setPickInput] = useState("");
@@ -76,6 +77,7 @@ export default function Dashboard() {
   const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysis | null>(null);
   const [isRiskMode, setIsRiskMode] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [riskQuotaResetAt, setRiskQuotaResetAt] = useState<string | null>(null);
 
   const isAnalyzingRef = useRef(false);
 
@@ -218,6 +220,7 @@ export default function Dashboard() {
     setRiskAnalysis(null);
     setAnalysis(null);
     setAnalysisError(null);
+    setQuotaResetAt(null);
     setAnalysisLoading(true);
     setPickInput("");
     isAnalyzingRef.current = true;
@@ -246,6 +249,9 @@ export default function Dashboard() {
       setAnalysis(result);
       refreshSubscription();
     } catch (e: any) {
+      if (e.isQuotaError && e.resetAt) {
+        setQuotaResetAt(e.resetAt);
+      }
       setAnalysisError(e.message || "Verifică conexiunea la server.");
     } finally {
       setAnalysisLoading(false);
@@ -280,6 +286,7 @@ export default function Dashboard() {
     setAnalysis(null);
     setAnalysisError(null);
     setRiskAnalysis(null);
+    setRiskQuotaResetAt(null);
     setAnalysisLoading(true);
     isAnalyzingRef.current = true;
 
@@ -288,6 +295,9 @@ export default function Dashboard() {
       setRiskAnalysis(result);
       refreshSubscription();
     } catch (e: any) {
+      if (e.isQuotaError && e.resetAt) {
+        setRiskQuotaResetAt(e.resetAt);
+      }
       setAnalysisError(e.message || "Eroare evaluare risc.");
     } finally {
       setAnalysisLoading(false);
@@ -464,6 +474,7 @@ export default function Dashboard() {
             setPickInput={setPickInput}
             onAddPick={handleAddPick}
             addedFeedback={addedFeedback}
+            quotaResetAt={isRiskMode ? riskQuotaResetAt : quotaResetAt}
           />
         </section>
 
