@@ -26,6 +26,11 @@ import { setFirebaseTokenGetter } from "@/lib/api";
 export type Plan = "weekly" | "pro" | "elite" | null;
 export type SubStatus = "active" | "canceled" | "past_due" | "incomplete" | "inactive";
 
+export interface DailyUsage {
+  analyses: number;
+  risk_analyses: number;
+}
+
 export interface SubscriptionInfo {
   plan: Plan;
   status: SubStatus;
@@ -35,6 +40,7 @@ export interface SubscriptionInfo {
     max_risk_analyses_per_day: number | null;
     has_risk_analyzer: boolean;
   };
+  daily_usage?: DailyUsage;
 }
 
 interface AuthContextType {
@@ -75,6 +81,7 @@ const MOCK_SUBSCRIPTION: SubscriptionInfo = {
     max_risk_analyses_per_day: null,
     has_risk_analyzer: true,
   },
+  daily_usage: { analyses: 0, risk_analyses: 0 },
 };
 
 // ── Provider ───────────────────────────────────────────────────
