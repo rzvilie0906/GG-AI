@@ -33,12 +33,23 @@ async def generate_all_tickets():
     now_local = datetime.now() 
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    today_display = now_local.strftime("%d.%m.%Y")
-    azi_str = now_local.strftime("%Y-%m-%d")
-    maine_str = (now_local + timedelta(days=1)).strftime("%Y-%m-%d")
+    # Ticket window: 10:00 today -> 10:00 tomorrow (Romanian time)
+    # If before 10:00, the window is from yesterday 10:00 to today 10:00
+    if now_local.hour < 10:
+        window_start = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0)
+        window_end = now_local.replace(hour=10, minute=0, second=0)
+    else:
+        window_start = now_local.replace(hour=10, minute=0, second=0)
+        window_end = (now_local + timedelta(days=1)).replace(hour=10, minute=0, second=0)
+
+    today_display = window_start.strftime("%d.%m.%Y")
+    start_str = window_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_str = window_end.strftime("%Y-%m-%dT%H:%M:%SZ")
+    azi_str = window_start.strftime("%Y-%m-%d")
+    maine_str = (window_start + timedelta(days=1)).strftime("%Y-%m-%d")
     
-    eur_start, eur_end = f"{azi_str}T00:00:00Z", f"{azi_str}T23:59:59Z"
-    us_start, us_end = f"{azi_str}T09:00:00Z", f"{maine_str}T08:59:59Z"
+    eur_start, eur_end = f"{azi_str}T07:00:00Z", f"{maine_str}T07:00:00Z"
+    us_start, us_end = f"{azi_str}T14:00:00Z", f"{maine_str}T14:00:00Z"
 
     AMERICA_KEYS = ["nba", "nhl", "mlb", "usa", "mex", "bra", "arg", "mls", "copa"]
     america_sql = " OR ".join([f"league_key LIKE '%{k}%'" for k in AMERICA_KEYS])
