@@ -541,7 +541,12 @@ async def get_daily_ticket(
     else:
         require_api_key(x_api_key)
     
-    today_str = datetime.now().strftime("%d.%m.%Y")
+    # Ticket window: 10:00 today -> 10:00 tomorrow (Romanian time)
+    now = datetime.now()
+    if now.hour < 10:
+        ticket_date = (now - timedelta(days=1)).strftime("%d.%m.%Y")
+    else:
+        ticket_date = now.strftime("%d.%m.%Y")
     valid_types = ["mixed", "football", "basketball", "hockey"]
     if type not in valid_types: type = "mixed"
     file_name = f"daily_ticket_{type}.json"
@@ -550,7 +555,7 @@ async def get_daily_ticket(
         if os.path.exists(file_name):
             with open(file_name, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            if data.get("date") == today_str and data.get("ticket"):
+            if data.get("date") == ticket_date and data.get("ticket"):
                 return data
     except Exception:
         pass
@@ -559,7 +564,7 @@ async def get_daily_ticket(
         if os.path.exists(file_name):
             with open(file_name, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            if data.get("date") == today_str and data.get("ticket"):
+            if data.get("date") == ticket_date and data.get("ticket"):
                 return data
 
         print(f"⚠️ [FIRST VISITOR] Pornim generarea biletelor...")
