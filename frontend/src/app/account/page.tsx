@@ -19,7 +19,6 @@ export default function AccountPage() {
   const { user, loading, subscription, subLoading, signOut, getIdToken, refreshSubscription, resetPassword } = useAuth();
   const router = useRouter();
   const [cancelLoading, setCancelLoading] = useState(false);
-  const [portalLoading, setPortalLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"info" | "success" | "error">("info");
@@ -77,31 +76,7 @@ export default function AccountPage() {
   }
 
   async function handleCancel() {
-    if (!confirm("Sigur dorești să anulezi abonamentul?\n\nNu se oferă rambursări. Vei păstra accesul până la sfârșitul perioadei curente de facturare.")) return;
     setCancelLoading(true);
-    setMessage("");
-    try {
-      const token = await getIdToken();
-      const res = await fetch(`${API_BASE}/api/billing/cancel`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        showMessage("Abonamentul a fost anulat. Vei păstra accesul până la sfârșitul perioadei de facturare.", "success");
-        await refreshSubscription();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        showMessage(data.detail || "Eroare la anularea abonamentului.", "error");
-      }
-    } catch {
-      showMessage("Eroare de conexiune.", "error");
-    } finally {
-      setCancelLoading(false);
-    }
-  }
-
-  async function handlePortal() {
-    setPortalLoading(true);
     try {
       const token = await getIdToken();
       const res = await fetch(`${API_BASE}/api/billing/portal`, {
@@ -111,11 +86,13 @@ export default function AccountPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.url) window.location.href = data.url;
+      } else {
+        showMessage("Eroare la deschiderea portalului Stripe.", "error");
       }
     } catch {
       showMessage("Eroare la deschiderea portalului Stripe.", "error");
     } finally {
-      setPortalLoading(false);
+      setCancelLoading(false);
     }
   }
 
@@ -305,18 +282,11 @@ export default function AccountPage() {
               </p>
               <div className="flex gap-3 mt-2">
                 <button
-                  onClick={handlePortal}
-                  disabled={portalLoading}
-                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm font-medium text-white hover:bg-white/5 transition disabled:opacity-50"
-                >
-                  {portalLoading ? "Se deschide..." : "Gestionează în Stripe"}
-                </button>
-                <button
                   onClick={handleCancel}
                   disabled={cancelLoading}
                   className="flex-1 py-2.5 rounded-xl border border-danger/20 text-sm font-medium text-danger hover:bg-danger/10 transition disabled:opacity-50"
                 >
-                  {cancelLoading ? "Se anulează..." : "Anulează abonamentul"}
+                  {cancelLoading ? "Se deschide..." : "Anulează abonamentul"}
                 </button>
               </div>
             </div>
