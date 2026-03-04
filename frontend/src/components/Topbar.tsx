@@ -1,0 +1,162 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { RefreshCw, Activity } from "./Icons";
+
+interface TopbarProps {
+  apiOnline: boolean;
+  lastRefresh: string;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+  userEmail?: string | null;
+  userName?: string | null;
+  onSignOut?: () => void;
+  onUpgradePlan?: () => void;
+}
+
+export default function Topbar({ apiOnline, lastRefresh, isRefreshing, onRefresh, userEmail, userName, onSignOut, onUpgradePlan }: TopbarProps) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const initials = userName
+    ? userName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+    : userEmail
+    ? userEmail.charAt(0).toUpperCase()
+    : "?";
+
+  return (
+    <header className="h-14 border-b border-[rgba(255,255,255,0.06)] bg-[#0d1117]/80 backdrop-blur-xl sticky top-0 z-50">
+      <div className="max-w-[1920px] mx-auto h-full px-5 flex items-center justify-between">
+        {/* Left — Brand */}
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-violet flex items-center justify-center shadow-glow">
+            <Activity className="text-white" size={16} />
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="text-[17px] font-extrabold tracking-tight bg-gradient-to-r from-white to-[#94a3b8] bg-clip-text text-transparent">
+              GG-AI
+            </span>
+          </div>
+        </div>
+
+        {/* Right — Status + Refresh + Avatar */}
+        <div className="flex items-center gap-4">
+          {/* API Status */}
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${apiOnline ? "bg-success shadow-[0_0_6px_rgba(52,211,153,0.5)]" : "bg-danger shadow-[0_0_6px_rgba(248,113,113,0.5)]"}`} />
+            <span className="text-xs text-text-muted font-medium hidden sm:inline">
+              {apiOnline ? "Online" : "Offline"}
+            </span>
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-5 bg-[rgba(255,255,255,0.08)]" />
+
+          {/* Last refresh */}
+          <span className="text-[11px] font-mono text-text-muted hidden sm:inline">
+            {lastRefresh}
+          </span>
+
+          {/* Refresh button */}
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="btn-ghost !p-2 !rounded-lg group"
+            title="Reîncarcă"
+          >
+            <RefreshCw
+              size={15}
+              className={`text-text-secondary group-hover:text-primary transition-colors ${isRefreshing ? "animate-spin" : ""}`}
+            />
+          </button>
+
+          {/* Avatar + Dropdown */}
+          {userEmail && (
+            <>
+              <div className="w-px h-5 bg-[rgba(255,255,255,0.08)]" />
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-violet flex items-center justify-center text-sm font-bold text-white hover:shadow-glow transition-shadow cursor-pointer"
+                  title={userEmail}
+                >
+                  {initials}
+                </button>
+
+                {dropdownOpen && (
+                  <div className="absolute right-0 top-12 w-56 rounded-xl border border-white/[0.08] bg-[#0d1117]/95 backdrop-blur-xl shadow-2xl py-1 z-[100]">
+                    {/* User info */}
+                    <div className="px-4 py-3 border-b border-white/[0.06]">
+                      {userName && <p className="text-sm font-semibold text-white truncate">{userName}</p>}
+                      <p className="text-xs text-text-muted truncate">{userEmail}</p>
+                    </div>
+
+                    {/* Menu items */}
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          router.push("/account");
+                        }}
+                        className="w-full px-4 py-2.5 text-sm text-text-secondary hover:text-white hover:bg-white/5 text-left flex items-center gap-3 transition"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                          <circle cx="12" cy="7" r="4" />
+                        </svg>
+                        Contul meu
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          onUpgradePlan?.();
+                        }}
+                        className="w-full px-4 py-2.5 text-sm text-text-secondary hover:text-white hover:bg-white/5 text-left flex items-center gap-3 transition"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                        </svg>
+                        Upgrade plan
+                      </button>
+                    </div>
+
+                    {/* Sign out */}
+                    <div className="border-t border-white/[0.06] py-1">
+                      <button
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          onSignOut?.();
+                        }}
+                        className="w-full px-4 py-2.5 text-sm text-danger/80 hover:text-danger hover:bg-danger/5 text-left flex items-center gap-3 transition"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                          <polyline points="16 17 21 12 16 7" />
+                          <line x1="21" y1="12" x2="9" y2="12" />
+                        </svg>
+                        Deconectare
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}

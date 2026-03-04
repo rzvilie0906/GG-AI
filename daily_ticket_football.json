@@ -1,0 +1,30 @@
+{
+  "ticket": [
+    {
+      "match": "Rayo Vallecano vs Real Oviedo",
+      "league": "La Liga",
+      "market": "1X2",
+      "pick": "Rayo Vallecano",
+      "odds": "1.7",
+      "reasoning": "Rayo Vallecano are o cotă favorabilă și joacă acasă, ceea ce le oferă un avantaj semnificativ împotriva unei echipe mai slabe precum Real Oviedo."
+    },
+    {
+      "match": "Aston Villa vs Chelsea",
+      "league": "Premier League",
+      "market": "Over/Under",
+      "pick": "Over 2.5",
+      "odds": "1.75",
+      "reasoning": "Ambele echipe au o forță ofensivă considerabilă și tind să participe la meciuri cu multe goluri. Cota pentru peste 2.5 goluri este atractivă și se încadrează în intervalul nostru țintă."
+    },
+    {
+      "match": "Fulham vs West Ham United",
+      "league": "Premier League",
+      "market": "1X2",
+      "pick": "Fulham",
+      "odds": "2.14",
+      "reasoning": "Fulham joacă acasă și are o cotă bună pentru victorie. West Ham nu a avut cele mai bune rezultate în deplasare, ceea ce face ca acest pariu să aibă valoare."
+    }
+  ],
+  "total_odds": 6.37,
+  "date": "04.03.2026"
+}

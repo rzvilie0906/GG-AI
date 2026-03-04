@@ -1,0 +1,39 @@
+# ── Environment & Secrets ──────────────────────────
+.env
+.env.*
+!.env.example
+firebase-service-account.json
+
+# ── Python ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# ── Databases ──────────────────────────────────────
+*.db
+*.sqlite3
+
+# ── Node / Next.js ─────────────────────────────────
+node_modules/
+.next/
+out/
+package-lock.json
+
+# ── OS / Editor ────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# ── Misc ───────────────────────────────────────────
+*.log
+*.bak
+*.tmp

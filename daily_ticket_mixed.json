@@ -1,0 +1,30 @@
+{
+  "ticket": [
+    {
+      "match": "Rayo Vallecano vs Real Oviedo",
+      "league": "La Liga 2",
+      "market": "1X2",
+      "pick": "Rayo Vallecano",
+      "odds": "1.70",
+      "reasoning": "Rayo Vallecano are o formă bună acasă și este favorită clară în fața lui Real Oviedo, care are dificultăți în deplasare. Cota de 1.70 oferă o valoare bună pentru o victorie a gazdelor."
+    },
+    {
+      "match": "New York Knicks vs Oklahoma City Thunder",
+      "league": "NBA",
+      "market": "1X2",
+      "pick": "New York Knicks",
+      "odds": "1.69",
+      "reasoning": "New York Knicks are un avantaj acasă și o formă mai bună comparativ cu Oklahoma City Thunder. Cota de 1.69 este atractivă pentru o victorie a gazdelor."
+    },
+    {
+      "match": "Detroit Red Wings vs Vegas Golden Knights",
+      "league": "NHL",
+      "market": "Total Puncte",
+      "pick": "Under 6.0",
+      "odds": "1.91",
+      "reasoning": "Ambele echipe au o defensivă solidă și tind să aibă meciuri cu puține goluri. Cota de 1.91 pentru sub 6.0 goluri oferă o valoare bună, având în vedere tendințele defensive ale ambelor echipe."
+    }
+  ],
+  "total_odds": 5.49,
+  "date": "04.03.2026"
+}

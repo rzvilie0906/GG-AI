@@ -1,0 +1,30 @@
+{
+  "ticket": [
+    {
+      "match": "Detroit Red Wings vs Vegas Golden Knights",
+      "league": "NHL",
+      "market": "Total Goals",
+      "pick": "Under 6.0",
+      "odds": "1.80",
+      "reasoning": "Both teams have shown a tendency to play defensively in recent matches, and the odds for under 6.0 goals provide good value within the target range."
+    },
+    {
+      "match": "Vancouver Canucks vs Carolina Hurricanes",
+      "league": "NHL",
+      "market": "1X2",
+      "pick": "Carolina Hurricanes",
+      "odds": "1.71",
+      "reasoning": "Carolina Hurricanes are in strong form and are favorites against the struggling Vancouver Canucks. The odds of 1.71 offer value for a straight win."
+    },
+    {
+      "match": "Seattle Kraken vs St. Louis Blues",
+      "league": "NHL",
+      "market": "Total Goals",
+      "pick": "Over 5.5",
+      "odds": "1.85",
+      "reasoning": "Both teams have been involved in high-scoring games recently, and the odds for over 5.5 goals are attractive given their offensive capabilities."
+    }
+  ],
+  "total_odds": 5.69,
+  "date": "04.03.2026"
+}

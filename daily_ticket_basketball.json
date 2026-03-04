@@ -1,0 +1,30 @@
+{
+  "ticket": [
+    {
+      "match": "New York Knicks vs Oklahoma City Thunder",
+      "league": "NBA",
+      "market": "Total Points",
+      "pick": "Over 221.5",
+      "odds": "1.94",
+      "reasoning": "Both teams have shown offensive capabilities, and the total points line is set at a reasonable level. The odds for over 221.5 points provide good value given the scoring potential of both teams."
+    },
+    {
+      "match": "Milwaukee Bucks vs Atlanta Hawks",
+      "league": "NBA",
+      "market": "1X2",
+      "pick": "Milwaukee Bucks",
+      "odds": "2.0",
+      "reasoning": "The odds for Milwaukee Bucks to win are attractive at 2.0. Despite being slight underdogs, the Bucks have the potential to outperform the Hawks, making this a value bet."
+    },
+    {
+      "match": "Boston Celtics vs Charlotte Hornets",
+      "league": "NBA",
+      "market": "Total Points",
+      "pick": "Under 214.5",
+      "odds": "1.95",
+      "reasoning": "The Celtics are known for their strong defense, and the Hornets may struggle to score against them. The under 214.5 points line offers good value considering the defensive strengths of the Celtics."
+    }
+  ],
+  "total_odds": 7.57,
+  "date": "04.03.2026"
+}

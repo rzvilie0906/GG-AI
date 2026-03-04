@@ -1,0 +1,478 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
+import StarBackground from "@/components/StarBackground";
+import Topbar from "@/components/Topbar";
+import DayChips from "@/components/DayChips";
+import Tabs from "@/components/Tabs";
+import MatchList from "@/components/MatchList";
+import TicketBuilder from "@/components/TicketBuilder";
+import DailyTicket from "@/components/DailyTicket";
+import AnalysisPanel from "@/components/AnalysisPanel";
+import { SearchIcon, Calendar, Grid } from "@/components/Icons";
+import {
+  checkApiHealth,
+  loadSports as fetchSports,
+  loadDefaultDate as fetchDefaultDate,
+  loadLeagues as fetchLeagues,
+  loadFixtures as fetchFixtures,
+  analyzeMatch as apiAnalyzeMatch,
+  analyzeTicket as apiAnalyzeTicket,
+} from "@/lib/api";
+import { labelSport, nowStr, buildMatchKey } from "@/lib/utils";
+import { Fixture, League, TicketPick, AnalysisResult, RiskAnalysis } from "@/lib/types";
+import { useAuth } from "@/lib/AuthContext";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
+export default function Dashboard() {
+  const { user, loading, subscription, subLoading, signOut, getIdToken } = useAuth();
+  const router = useRouter();
+  const [userName, setUserName] = useState<string | null>(null);
+
+  // ── Route protection ──
+  useEffect(() => {
+    if (loading || subLoading) return;
+    if (!user) {
+      router.replace("/auth/signin?redirect=/dashboard");
+      return;
+    }
+    if (!user.emailVerified) {
+      router.replace("/auth/verify");
+      return;
+    }
+    if (!subscription || subscription.status !== "active") {
+      router.replace("/pricing");
+      return;
+    }
+  }, [user, loading, subscription, subLoading, router]);
+  // ── State ──
+  const [apiOnline, setApiOnline] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState("--:--");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [sports, setSports] = useState<string[]>([]);
+  const [selectedSport, setSelectedSport] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [leagues, setLeagues] = useState<League[]>([]);
+  const [selectedLeague, setSelectedLeague] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
+
+  const [allFixtures, setAllFixtures] = useState<Fixture[]>([]);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<Fixture | null>(null);
+
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  const [ticket, setTicket] = useState<TicketPick[]>([]);
+  const [pickInput, setPickInput] = useState("");
+  const [addedFeedback, setAddedFeedback] = useState(false);
+
+  const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysis | null>(null);
+  const [isRiskMode, setIsRiskMode] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  const isAnalyzingRef = useRef(false);
+
+  // Fetch user profile for display name + check profile completion
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const res = await fetch(`${API_BASE}/api/auth/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUserName(data.full_name || null);
+          // Redirect Google users who haven't completed their profile
+          if (!data.full_name || !data.date_of_birth) {
+            router.replace("/auth/complete-profile?redirect=/dashboard");
+            return;
+          }
+        }
+      } catch {}
+    })();
+  }, [user, getIdToken, router]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/auth/signin");
+  };
+
+  const handleUpgradePlan = () => {
+    router.push("/pricing?upgrade=true");
+  };
+
+  // ── Filtered fixtures ──
+  const filteredFixtures = searchQuery.trim()
+    ? allFixtures.filter(
+        (m) =>
+          (m.home_team || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (m.away_team || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (m.league_name || "").toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : allFixtures;
+
+  // ── Refresh all data ──
+  const refreshAll = useCallback(
+    async (sport?: string, date?: string, league?: string, tab?: string) => {
+      if (isAnalyzingRef.current) return;
+
+      const ok = await checkApiHealth();
+      setApiOnline(ok);
+      if (!ok) return;
+
+      setIsRefreshing(true);
+
+      const s = sport ?? selectedSport;
+      const d = date ?? selectedDate;
+      const l = league ?? selectedLeague;
+      const t = tab ?? activeTab;
+
+      if (s && d) {
+        const leaguesData = await fetchLeagues(s, d);
+        setLeagues(leaguesData);
+
+        const fixtures = await fetchFixtures(s, d, t, l || undefined);
+        setAllFixtures(fixtures);
+      }
+
+      setLastRefresh(nowStr());
+      setIsRefreshing(false);
+    },
+    [selectedSport, selectedDate, selectedLeague, activeTab]
+  );
+
+  // ── Init ──
+  useEffect(() => {
+    async function init() {
+      const ok = await checkApiHealth();
+      setApiOnline(ok);
+
+      const defaultDate = await fetchDefaultDate();
+      setSelectedDate(defaultDate);
+
+      const sportsData = await fetchSports();
+      setSports(sportsData);
+
+      if (sportsData.length > 0) {
+        const firstSport = sportsData[0];
+        setSelectedSport(firstSport);
+
+        const leaguesData = await fetchLeagues(firstSport, defaultDate);
+        setLeagues(leaguesData);
+
+        const fixtures = await fetchFixtures(firstSport, defaultDate, "all");
+        setAllFixtures(fixtures);
+        setLastRefresh(nowStr());
+      }
+    }
+    init();
+  }, []);
+
+  // ── Auto-refresh every 60s ──
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!isAnalyzingRef.current) {
+        refreshAll();
+      }
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [refreshAll]);
+
+  // ── Handlers ──
+  async function handleSportChange(sport: string) {
+    setSelectedSport(sport);
+    setSelectedLeague("");
+    await refreshAll(sport, selectedDate, "", activeTab);
+  }
+
+  async function handleDateChange(date: string) {
+    setSelectedDate(date);
+    setSelectedLeague("");
+    await refreshAll(selectedSport, date, "", activeTab);
+  }
+
+  async function handleLeagueChange(league: string) {
+    setSelectedLeague(league);
+    await refreshAll(selectedSport, selectedDate, league, activeTab);
+  }
+
+  async function handleTabChange(tab: string) {
+    setActiveTab(tab);
+    await refreshAll(selectedSport, selectedDate, selectedLeague, tab);
+  }
+
+  async function handleAnalyzeMatch(fixture: Fixture) {
+    setSelectedMatchId(fixture.id);
+    setSelectedMatch(fixture);
+    setIsRiskMode(false);
+    setRiskAnalysis(null);
+    setAnalysis(null);
+    setAnalysisError(null);
+    setAnalysisLoading(true);
+    setPickInput("");
+    isAnalyzingRef.current = true;
+
+    const matchDate = selectedDate || new Date().toISOString().slice(0, 10);
+    const matchKey = buildMatchKey(
+      selectedSport,
+      fixture.league_name || "Unknown",
+      fixture.home_team || "",
+      fixture.away_team || "",
+      matchDate
+    );
+
+    try {
+      const result = await apiAnalyzeMatch(
+        selectedSport,
+        fixture.league_name || "Unknown",
+        fixture.home_team || "",
+        fixture.away_team || "",
+        matchDate,
+        matchKey,
+        fixture.provider,
+        fixture.status,
+        fixture.start_time_utc
+      );
+      setAnalysis(result);
+    } catch (e: any) {
+      setAnalysisError(e.message || "Verifică conexiunea la server.");
+    } finally {
+      setAnalysisLoading(false);
+      isAnalyzingRef.current = false;
+    }
+  }
+
+  function handleAddPick() {
+    if (!pickInput.trim() || !selectedMatch) return;
+    setTicket((prev) => [
+      ...prev,
+      {
+        match: `${selectedMatch.home_team} vs ${selectedMatch.away_team}`,
+        league: selectedMatch.league_name || "Unknown",
+        pick: pickInput.trim(),
+      },
+    ]);
+    setPickInput("");
+    setAddedFeedback(true);
+    setTimeout(() => setAddedFeedback(false), 1500);
+  }
+
+  function handleRemovePick(index: number) {
+    setTicket((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleVerifyTicket() {
+    if (ticket.length < 2) return;
+
+    setIsVerifying(true);
+    setIsRiskMode(true);
+    setAnalysis(null);
+    setAnalysisError(null);
+    setRiskAnalysis(null);
+    setAnalysisLoading(true);
+    isAnalyzingRef.current = true;
+
+    try {
+      const result = await apiAnalyzeTicket(ticket);
+      setRiskAnalysis(result);
+    } catch (e: any) {
+      setAnalysisError(e.message || "Eroare evaluare risc.");
+    } finally {
+      setAnalysisLoading(false);
+      setIsVerifying(false);
+      isAnalyzingRef.current = false;
+    }
+  }
+
+  // ── Show loading while checking auth ──
+  if (loading || subLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-deep)" }}>
+        <div className="animate-spin h-10 w-10 border-2 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // ── Don't render if not authorized (redirect will happen via useEffect) ──
+  if (!user || !subscription || subscription.status !== "active") {
+    return null;
+  }
+
+  // ── Tier-based feature flags ──
+  const plan = subscription.plan;
+  const hasRiskAnalyzer = plan === "pro" || plan === "elite";
+  const unlimitedAnalyses = plan === "pro" || plan === "elite";
+  const unlimitedRisk = plan === "elite";
+
+  return (
+    <div className="h-screen overflow-hidden">
+      <StarBackground />
+      <Topbar
+        apiOnline={apiOnline}
+        lastRefresh={lastRefresh}
+        isRefreshing={isRefreshing}
+        onRefresh={() => refreshAll()}
+        userEmail={user?.email}
+        userName={userName}
+        onSignOut={handleSignOut}
+        onUpgradePlan={handleUpgradePlan}
+      />
+
+      {/* ═══ Horizontal Controls Bar ═══ */}
+      <div className="border-b border-[rgba(255,255,255,0.06)] bg-[#0d1117]/50 backdrop-blur-sm">
+        <div className="max-w-[1920px] mx-auto px-5 py-3 flex items-center gap-4 flex-wrap">
+          {/* Sport selector (pill buttons) */}
+          <div className="flex gap-1.5">
+            {sports.map((s) => (
+              <button
+                key={s}
+                onClick={() => handleSportChange(s)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 border font-ui ${
+                  selectedSport === s
+                    ? "bg-primary text-white border-primary shadow-[0_2px_10px_rgba(99,102,241,0.2)]"
+                    : "bg-transparent text-text-secondary border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.12)] hover:text-text-main"
+                }`}
+              >
+                {labelSport(s)}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-6 bg-[rgba(255,255,255,0.06)]" />
+
+          {/* Day chips */}
+          <DayChips selectedDate={selectedDate} onSelectDate={handleDateChange} />
+
+          {/* Calendar toggle */}
+          <button
+            onClick={() => setShowCalendar(!showCalendar)}
+            className={`btn-ghost !p-2 !rounded-lg ${showCalendar ? "!border-primary/30 !text-primary" : ""}`}
+          >
+            <Calendar size={14} />
+          </button>
+
+          {showCalendar && (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => { if (e.target.value) handleDateChange(e.target.value); }}
+              className="input-field !w-auto !py-1.5 !text-xs"
+            />
+          )}
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Matches count */}
+          <span className="badge bg-primary-soft text-primary text-[11px] font-mono">
+            {filteredFixtures.length} meciuri
+          </span>
+        </div>
+      </div>
+
+      {/* ═══ Main 3-Column Layout ═══ */}
+      <main className="grid grid-cols-1 lg:grid-cols-[320px_1fr_340px] gap-0 h-[calc(100vh-56px-52px)] max-w-[1920px] mx-auto">
+
+        {/* ── LEFT: Match Explorer ── */}
+        <aside className="flex flex-col h-full border-r border-[rgba(255,255,255,0.06)] bg-surface/30">
+          {/* Controls inside sidebar */}
+          <div className="p-3 flex flex-col gap-2.5 border-b border-[rgba(255,255,255,0.06)]">
+            {/* Tabs */}
+            <Tabs activeTab={activeTab} onTabChange={handleTabChange} />
+
+            {/* League + Search row */}
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={selectedLeague}
+                onChange={(e) => handleLeagueChange(e.target.value)}
+                className="input-field !py-1.5 !text-xs"
+              >
+                <option value="">Toate ligile</option>
+                {leagues.map((l, idx) => (
+                  <option key={`${l.league_key}-${idx}`} value={l.league_key}>
+                    {l.league_name} ({l.count})
+                  </option>
+                ))}
+              </select>
+
+              <div className="relative">
+                <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" size={13} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="input-field !pl-8 !py-1.5 !text-xs"
+                  placeholder="Caută..."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Match list header */}
+          <div className="px-4 py-2.5 flex items-center gap-2 border-b border-[rgba(255,255,255,0.04)]">
+            <Grid className="text-primary" size={13} />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Meciuri</span>
+          </div>
+
+          {/* Match list */}
+          <MatchList
+            fixtures={filteredFixtures}
+            selectedMatchId={selectedMatchId}
+            onSelectMatch={handleAnalyzeMatch}
+          />
+        </aside>
+
+        {/* ── CENTER: Analysis ── */}
+        <section className="overflow-y-auto h-full custom-scroll p-5">
+          <AnalysisPanel
+            selectedMatch={selectedMatch}
+            analysis={analysis}
+            isLoading={analysisLoading}
+            error={analysisError}
+            riskAnalysis={riskAnalysis}
+            isRiskMode={isRiskMode}
+            pickInput={pickInput}
+            setPickInput={setPickInput}
+            onAddPick={handleAddPick}
+            addedFeedback={addedFeedback}
+          />
+        </section>
+
+        {/* ── RIGHT: Ticket & Daily ── */}
+        <aside className="flex flex-col h-full border-l border-[rgba(255,255,255,0.06)] bg-surface/30 overflow-y-auto custom-scroll">
+          <div className="p-4 flex flex-col gap-4">
+            {/* Ticket Builder */}
+            <TicketBuilder
+              ticket={ticket}
+              onRemovePick={handleRemovePick}
+              onVerify={hasRiskAnalyzer ? handleVerifyTicket : undefined}
+              isVerifying={isVerifying}
+              disabled={!hasRiskAnalyzer}
+            />
+
+            {!hasRiskAnalyzer && (
+              <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 text-amber-400 text-xs text-center">
+                🔒 Analizorul de Risc este disponibil doar pe planurile Pro și Elite.
+                <a href="/pricing" className="underline ml-1 text-amber-300 hover:text-white">Upgrade acum</a>
+              </div>
+            )}
+
+            {/* Daily Ticket */}
+            <DailyTicket />
+          </div>
+        </aside>
+      </main>
+    </div>
+  );
+}
