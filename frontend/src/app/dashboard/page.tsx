@@ -223,15 +223,6 @@ export default function Dashboard() {
     setQuotaResetAt(null);
     setPickInput("");
 
-    // Preemptive quota check
-    const maxAnalyses = subscription?.tier_limits?.max_analyses_per_day;
-    const usedAnalyses = subscription?.daily_usage?.analyses ?? 0;
-    if (maxAnalyses !== null && maxAnalyses !== undefined && usedAnalyses >= maxAnalyses) {
-      setQuotaResetAt(subscription?.reset_at || null);
-      setAnalysisError(`Ai atins limita zilnic\u0103 de ${maxAnalyses} analize. Upgrade la un plan superior pentru analize nelimitate.`);
-      return;
-    }
-
     setAnalysisLoading(true);
     isAnalyzingRef.current = true;
 
@@ -507,9 +498,9 @@ export default function Dashboard() {
             onAddPick={handleAddPick}
             addedFeedback={addedFeedback}
             quotaResetAt={isRiskMode ? riskQuotaResetAt : quotaResetAt}
-            analysisQuotaLocked={analysisQuotaExceeded}
-            analysisResetAt={analysisQuotaExceeded ? (subscription.reset_at || null) : null}
-            analysisQuotaMessage={analysisQuotaExceeded ? `Ai atins limita zilnică de ${maxAnalyses} analize. Upgrade la un plan superior pentru analize nelimitate.` : null}
+            analysisQuotaLocked={analysisQuotaExceeded && !analysis}
+            analysisResetAt={(analysisQuotaExceeded && !analysis) ? (subscription.reset_at || null) : null}
+            analysisQuotaMessage={(analysisQuotaExceeded && !analysis) ? `Ai atins limita zilnică de ${maxAnalyses} analize. Upgrade la un plan superior pentru analize nelimitate.` : null}
           />
         </section>
 
