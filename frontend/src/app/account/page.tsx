@@ -23,6 +23,10 @@ export default function AccountPage() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"info" | "success" | "error">("info");
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDob, setEditDob] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Fetch profile data from backend
   useEffect(() => {
@@ -60,6 +64,78 @@ export default function AccountPage() {
     setMessage(text);
     setMessageType(type);
     setTimeout(() => setMessage(""), 6000);
+  }
+
+  function isoToDdMmYyyy(iso: string): string {
+    const parts = iso.split("-");
+    if (parts.length !== 3) return iso;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+
+  function ddMmYyyyToIso(dob: string): string {
+    const parts = dob.split("/");
+    if (parts.length !== 3) return dob;
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+
+  function startEditing() {
+    setEditName(profile?.full_name || "");
+    setEditDob(profile?.date_of_birth ? isoToDdMmYyyy(profile.date_of_birth) : "");
+    setEditing(true);
+  }
+
+  async function handleSaveProfile() {
+    if (!editName.trim()) {
+      showMessage("Numele complet este obligatoriu.", "error");
+      return;
+    }
+    const dobParts = editDob.split("/");
+    if (dobParts.length !== 3 || dobParts[2]?.length !== 4) {
+      showMessage("Data nașterii trebuie să fie în formatul ZZ/LL/AAAA.", "error");
+      return;
+    }
+    const isoDate = ddMmYyyyToIso(editDob);
+    const birth = new Date(isoDate);
+    if (isNaN(birth.getTime())) {
+      showMessage("Data nașterii nu este validă.", "error");
+      return;
+    }
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    if (age < 18) {
+      showMessage("Trebuie să ai cel puțin 18 ani.", "error");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const token = await getIdToken();
+      const res = await fetch(`${API_BASE}/api/auth/profile`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          full_name: editName.trim(),
+          date_of_birth: isoDate,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Eroare la salvarea profilului.");
+      }
+      setProfile((prev) => prev ? { ...prev, full_name: editName.trim(), date_of_birth: isoDate } : prev);
+      setEditing(false);
+      showMessage("Profilul a fost actualizat cu succes.", "success");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showMessage(msg, "error");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handlePasswordReset() {
@@ -161,47 +237,120 @@ export default function AccountPage() {
 
         {/* Profile Section */}
         <div className="card p-6 mb-6">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-text-muted mb-5 flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            Profil
-          </h2>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-text-secondary text-sm">Nume complet</span>
-              <span className="text-white font-medium">{profile?.full_name || "—"}</span>
-            </div>
-            <div className="h-px bg-white/[0.06]" />
-            <div className="flex justify-between items-center">
-              <span className="text-text-secondary text-sm">Email</span>
-              <span className="text-white font-medium">{user.email}</span>
-            </div>
-            <div className="h-px bg-white/[0.06]" />
-            <div className="flex justify-between items-center">
-              <span className="text-text-secondary text-sm">Data nașterii</span>
-              <span className="text-white font-medium">
-                {profile?.date_of_birth
-                  ? new Date(profile.date_of_birth).toLocaleDateString("ro-RO", { year: "numeric", month: "long", day: "numeric" })
-                  : "—"}
-              </span>
-            </div>
-            <div className="h-px bg-white/[0.06]" />
-            <div className="flex justify-between items-center">
-              <span className="text-text-secondary text-sm">Autentificare</span>
-              <span className="text-white font-medium capitalize">
-                {user.providerData?.[0]?.providerId === "google.com" ? "Google" : "Email & Parolă"}
-              </span>
-            </div>
-            <div className="h-px bg-white/[0.06]" />
-            <div className="flex justify-between items-center">
-              <span className="text-text-secondary text-sm">Email verificat</span>
-              <span className={user.emailVerified ? "text-success font-medium" : "text-warning font-medium"}>
-                {user.emailVerified ? "Da ✓" : "Nu ✗"}
-              </span>
-            </div>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-text-muted flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              Profil
+            </h2>
+            {!editing && (
+              <button
+                onClick={startEditing}
+                className="text-sm text-primary hover:text-primary-hover font-medium transition flex items-center gap-1.5"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                Editează
+              </button>
+            )}
           </div>
+
+          {editing ? (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-text-secondary mb-1.5">Nume complet</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="input-field w-full"
+                  placeholder="Ion Popescu"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-text-secondary mb-1.5">Data nașterii (ZZ/LL/AAAA)</label>
+                <input
+                  type="text"
+                  value={editDob}
+                  onChange={(e) => {
+                    let v = e.target.value.replace(/[^0-9]/g, "");
+                    if (v.length > 8) v = v.slice(0, 8);
+                    if (v.length >= 5) v = v.slice(0, 2) + "/" + v.slice(2, 4) + "/" + v.slice(4);
+                    else if (v.length >= 3) v = v.slice(0, 2) + "/" + v.slice(2);
+                    setEditDob(v);
+                  }}
+                  maxLength={10}
+                  className="input-field w-full"
+                  placeholder="31/12/2000"
+                />
+              </div>
+              <div className="flex gap-3 mt-2">
+                <button
+                  onClick={handleSaveProfile}
+                  disabled={saving}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-violet text-white font-semibold text-sm hover:shadow-glow transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {saving ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Se salvează...
+                    </>
+                  ) : (
+                    "Salvează"
+                  )}
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  disabled={saving}
+                  className="px-5 py-2.5 rounded-xl border border-white/10 text-sm font-medium text-text-secondary hover:text-white hover:bg-white/5 transition disabled:opacity-50"
+                >
+                  Anulează
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-text-secondary text-sm">Nume complet</span>
+                <span className="text-white font-medium">{profile?.full_name || "—"}</span>
+              </div>
+              <div className="h-px bg-white/[0.06]" />
+              <div className="flex justify-between items-center">
+                <span className="text-text-secondary text-sm">Email</span>
+                <span className="text-white font-medium">{user.email}</span>
+              </div>
+              <div className="h-px bg-white/[0.06]" />
+              <div className="flex justify-between items-center">
+                <span className="text-text-secondary text-sm">Data nașterii</span>
+                <span className="text-white font-medium">
+                  {profile?.date_of_birth
+                    ? new Date(profile.date_of_birth).toLocaleDateString("ro-RO", { year: "numeric", month: "long", day: "numeric" })
+                    : "—"}
+                </span>
+              </div>
+              <div className="h-px bg-white/[0.06]" />
+              <div className="flex justify-between items-center">
+                <span className="text-text-secondary text-sm">Autentificare</span>
+                <span className="text-white font-medium capitalize">
+                  {user.providerData?.[0]?.providerId === "google.com" ? "Google" : "Email & Parolă"}
+                </span>
+              </div>
+              <div className="h-px bg-white/[0.06]" />
+              <div className="flex justify-between items-center">
+                <span className="text-text-secondary text-sm">Email verificat</span>
+                <span className={user.emailVerified ? "text-success font-medium" : "text-warning font-medium"}>
+                  {user.emailVerified ? "Da ✓" : "Nu ✗"}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Password Section (only for email provider) */}

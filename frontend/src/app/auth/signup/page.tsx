@@ -5,28 +5,49 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import Link from "next/link";
 import { Suspense } from "react";
+import { GoogleReCaptchaProvider, useGoogleReCaptcha } from "react-google-recaptcha-v3";
+
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
 
 function SignUpForm() {
   const { signUp, signInWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const priceId = searchParams.get("priceId");
+  const { executeRecaptcha } = useGoogleReCaptcha();
 
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const parseDob = (dob: string): Date | null => {
+    const parts = dob.split("/");
+    if (parts.length !== 3) return null;
+    const [dd, mm, yyyy] = parts;
+    if (!dd || !mm || !yyyy || yyyy.length !== 4) return null;
+    const d = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+    if (isNaN(d.getTime())) return null;
+    return d;
+  };
+
   const calculateAge = (dob: string): number => {
-    const birth = new Date(dob);
+    const birth = parseDob(dob);
+    if (!birth) return -1;
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const m = today.getMonth() - birth.getMonth();
     if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
     return age;
+  };
+
+  const dobToIso = (dob: string): string => {
+    const parts = dob.split("/");
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
   };
 
   const handleEmailSignUp = async (e: React.FormEvent) => {
@@ -37,8 +58,8 @@ function SignUpForm() {
       setError("Numele complet este obligatoriu.");
       return;
     }
-    if (!dateOfBirth) {
-      setError("Data nașterii este obligatorie.");
+    if (!dateOfBirth || !parseDob(dateOfBirth)) {
+      setError("Data nașterii este obligatorie (format: ZZ/LL/AAAA).");
       return;
     }
     if (calculateAge(dateOfBirth) < 18) {
@@ -53,10 +74,24 @@ function SignUpForm() {
       setError("Parola trebuie să aibă cel puțin 6 caractere.");
       return;
     }
+    if (!acceptedTerms) {
+      setError("Trebuie să accepți termenii și condițiile și politica de confidențialitate.");
+      return;
+    }
+    if (!executeRecaptcha) {
+      setError("Verificarea CAPTCHA nu este disponibilă. Reîncarcă pagina.");
+      return;
+    }
 
     setLoading(true);
     try {
-      await signUp(email, password, fullName.trim(), dateOfBirth);
+      const captchaToken = await executeRecaptcha("signup");
+      if (!captchaToken) {
+        setError("Verificarea CAPTCHA a eșuat. Încearcă din nou.");
+        setLoading(false);
+        return;
+      }
+      await signUp(email, password, fullName.trim(), dobToIso(dateOfBirth));
       // Redirect to verification page
       router.push(`/auth/verify?email=${encodeURIComponent(email)}${priceId ? `&priceId=${priceId}` : ""}`);
     } catch (err: unknown) {
@@ -79,8 +114,24 @@ function SignUpForm() {
 
   const handleGoogleSignUp = async () => {
     setError("");
+
+    if (!acceptedTerms) {
+      setError("Trebuie să accepți termenii și condițiile și politica de confidențialitate.");
+      return;
+    }
+    if (!executeRecaptcha) {
+      setError("Verificarea CAPTCHA nu este disponibilă. Reîncarcă pagina.");
+      return;
+    }
+
     setLoading(true);
     try {
+      const captchaToken = await executeRecaptcha("google_signup");
+      if (!captchaToken) {
+        setError("Verificarea CAPTCHA a eșuat. Încearcă din nou.");
+        setLoading(false);
+        return;
+      }
       const result = await signInWithGoogle();
       if (result.needsProfile) {
         const params = new URLSearchParams();
@@ -170,14 +221,21 @@ function SignUpForm() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Data nașterii</label>
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">Data nașterii (ZZ/LL/AAAA)</label>
               <input
-                type="date"
+                type="text"
                 value={dateOfBirth}
-                onChange={(e) => setDateOfBirth(e.target.value)}
+                onChange={(e) => {
+                  let v = e.target.value.replace(/[^0-9]/g, "");
+                  if (v.length > 8) v = v.slice(0, 8);
+                  if (v.length >= 5) v = v.slice(0, 2) + "/" + v.slice(2, 4) + "/" + v.slice(4);
+                  else if (v.length >= 3) v = v.slice(0, 2) + "/" + v.slice(2);
+                  setDateOfBirth(v);
+                }}
                 required
-                max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]}
+                maxLength={10}
                 className="input-field w-full"
+                placeholder="31/12/2000"
               />
             </div>
             <div>
@@ -215,6 +273,28 @@ function SignUpForm() {
                 placeholder="Repetă parola"
               />
             </div>
+
+            {/* Terms and conditions checkbox */}
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="acceptTerms"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer accent-[var(--primary)]"
+              />
+              <label htmlFor="acceptTerms" className="text-sm text-text-secondary leading-relaxed cursor-pointer">
+                Înscriindu-vă, acceptați{" "}
+                <Link href="/termeni" target="_blank" className="text-primary hover:text-primary-hover font-medium underline">
+                  termenii și condițiile
+                </Link>{" "}
+                și{" "}
+                <Link href="/confidentialitate" target="_blank" className="text-primary hover:text-primary-hover font-medium underline">
+                  politica de confidențialitate
+                </Link>.
+              </label>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -256,7 +336,9 @@ export default function SignUpPage() {
         <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
       </div>
     }>
-      <SignUpForm />
+      <GoogleReCaptchaProvider reCaptchaKey={RECAPTCHA_SITE_KEY}>
+        <SignUpForm />
+      </GoogleReCaptchaProvider>
     </Suspense>
   );
 }

@@ -427,6 +427,51 @@ async def get_profile(authorization: Optional[str] = Header(default=None)):
     }
 
 
+class UpdateProfileRequest(BaseModel):
+    full_name: Optional[str] = None
+    date_of_birth: Optional[str] = None
+
+@billing_router.put("/api/auth/profile")
+async def update_profile(data: UpdateProfileRequest, authorization: Optional[str] = Header(default=None)):
+    """Update the current user's profile info."""
+    decoded = await verify_firebase_token(authorization)
+    uid = decoded["uid"]
+    user = _get_user(uid)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit.")
+
+    if data.date_of_birth:
+        try:
+            dob = datetime.fromisoformat(data.date_of_birth)
+            today = datetime.now(timezone.utc)
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            if age < 18:
+                raise HTTPException(status_code=400, detail="Trebuie să ai cel puțin 18 ani.")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data nașterii nu este validă.")
+
+    updates = {}
+    if data.full_name is not None:
+        updates["full_name"] = data.full_name.strip()
+    if data.date_of_birth is not None:
+        updates["date_of_birth"] = data.date_of_birth
+
+    if updates:
+        conn = _users_connect()
+        now = datetime.now(timezone.utc).isoformat()
+        sets = ["updated_at = ?"]
+        vals = [now]
+        for k, v in updates.items():
+            sets.append(f"{k} = ?")
+            vals.append(v)
+        vals.append(uid)
+        conn.execute(f"UPDATE users SET {', '.join(sets)} WHERE uid = ?", vals)
+        conn.commit()
+        conn.close()
+
+    return {"status": "ok", "message": "Profilul a fost actualizat cu succes."}
+
+
 @billing_router.post("/api/auth/password-reset")
 async def request_password_reset(request: Request):
     """Send a password reset email via Firebase Auth."""
@@ -640,14 +685,15 @@ async def upgrade_subscription(data: UpgradeRequest, authorization: Optional[str
         new_rank = PLAN_RANK.get(new_plan, 0)
 
         if new_rank > current_rank:
-            # Upgrade: immediate with proration
+            # Upgrade: prorate and require payment before applying
             stripe.Subscription.modify(
                 stripe_sub_id,
                 items=[{"id": current_item_id, "price": data.price_id}],
                 proration_behavior="create_prorations",
+                payment_behavior="pending_if_incomplete",
             )
-            _update_user_subscription(uid, plan=new_plan)
-            return {"status": "ok", "message": f"Planul a fost upgradat la {new_plan.capitalize()}. Modificarea este activa imediat.", "effective": "now"}
+            # DB update is handled by customer.subscription.updated webhook after payment succeeds
+            return {"status": "ok", "message": f"Upgrade-ul la {new_plan.capitalize()} va fi activat dupa procesarea platii.", "effective": "after_payment"}
         else:
             # Downgrade: schedule at period end
             stripe.Subscription.modify(

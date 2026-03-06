@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import Link from "next/link";
 import { Suspense } from "react";
+import { GoogleReCaptchaProvider, useGoogleReCaptcha } from "react-google-recaptcha-v3";
+
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
 
 function SignInForm() {
   const { signIn, signInWithGoogle } = useAuth();
@@ -12,6 +15,7 @@ function SignInForm() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/dashboard";
   const priceId = searchParams.get("priceId");
+  const { executeRecaptcha } = useGoogleReCaptcha();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,8 +25,20 @@ function SignInForm() {
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!executeRecaptcha) {
+      setError("Verificarea CAPTCHA nu este disponibilă. Reîncarcă pagina.");
+      return;
+    }
+
     setLoading(true);
     try {
+      const captchaToken = await executeRecaptcha("signin");
+      if (!captchaToken) {
+        setError("Verificarea CAPTCHA a eșuat. Încearcă din nou.");
+        setLoading(false);
+        return;
+      }
       await signIn(email, password);
       // If there's a priceId, go to checkout flow
       if (priceId) {
@@ -50,8 +66,20 @@ function SignInForm() {
 
   const handleGoogleSignIn = async () => {
     setError("");
+
+    if (!executeRecaptcha) {
+      setError("Verificarea CAPTCHA nu este disponibilă. Reîncarcă pagina.");
+      return;
+    }
+
     setLoading(true);
     try {
+      const captchaToken = await executeRecaptcha("google_signin");
+      if (!captchaToken) {
+        setError("Verificarea CAPTCHA a eșuat. Încearcă din nou.");
+        setLoading(false);
+        return;
+      }
       const result = await signInWithGoogle();
       if (result.needsProfile) {
         const params = new URLSearchParams();
@@ -205,7 +233,9 @@ export default function SignInPage() {
         <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
       </div>
     }>
-      <SignInForm />
+      <GoogleReCaptchaProvider reCaptchaKey={RECAPTCHA_SITE_KEY}>
+        <SignInForm />
+      </GoogleReCaptchaProvider>
     </Suspense>
   );
 }

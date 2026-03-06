@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import Link from "next/link";
 import { Suspense } from "react";
+import { GoogleReCaptchaProvider, useGoogleReCaptcha } from "react-google-recaptcha-v3";
+
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -15,8 +18,10 @@ function CompleteProfileForm() {
   const redirect = searchParams.get("redirect") || "/dashboard";
   const priceId = searchParams.get("priceId");
 
+  const { executeRecaptcha } = useGoogleReCaptcha();
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,13 +39,29 @@ function CompleteProfileForm() {
     }
   }, [user, loading, router]);
 
+  const parseDob = (dob: string): Date | null => {
+    const parts = dob.split("/");
+    if (parts.length !== 3) return null;
+    const [dd, mm, yyyy] = parts;
+    if (!dd || !mm || !yyyy || yyyy.length !== 4) return null;
+    const d = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+    if (isNaN(d.getTime())) return null;
+    return d;
+  };
+
   const calculateAge = (dob: string): number => {
-    const birth = new Date(dob);
+    const birth = parseDob(dob);
+    if (!birth) return -1;
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const m = today.getMonth() - birth.getMonth();
     if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
     return age;
+  };
+
+  const dobToIso = (dob: string): string => {
+    const parts = dob.split("/");
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,16 +72,36 @@ function CompleteProfileForm() {
       setError("Numele complet este obligatoriu.");
       return;
     }
-    if (!dateOfBirth) {
-      setError("Data nasterii este obligatorie.");
+    if (!dateOfBirth || !parseDob(dateOfBirth)) {
+      setError("Data nasterii este obligatorie (format: ZZ/LL/AAAA).");
       return;
     }
     if (calculateAge(dateOfBirth) < 18) {
       setError("Trebuie sa ai cel putin 18 ani pentru a te inregistra.");
       return;
     }
+    if (!acceptedTerms) {
+      setError("Trebuie să accepți termenii și condițiile și politica de confidențialitate.");
+      return;
+    }
+    if (!executeRecaptcha) {
+      setError("Verificarea CAPTCHA nu este disponibilă. Reîncarcă pagina.");
+      return;
+    }
 
     setSubmitting(true);
+    try {
+      const captchaToken = await executeRecaptcha("complete_profile");
+      if (!captchaToken) {
+        setError("Verificarea CAPTCHA a eșuat. Încearcă din nou.");
+        setSubmitting(false);
+        return;
+      }
+    } catch {
+      setError("Verificarea CAPTCHA a eșuat.");
+      setSubmitting(false);
+      return;
+    }
     try {
       const token = await getIdToken();
       if (!token || !user) throw new Error("Nu esti autentificat.");
@@ -76,7 +117,7 @@ function CompleteProfileForm() {
           email: user.email,
           provider: "google",
           full_name: fullName.trim(),
-          date_of_birth: dateOfBirth,
+          date_of_birth: dobToIso(dateOfBirth),
         }),
       });
 
@@ -159,16 +200,44 @@ function CompleteProfileForm() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Data nasterii</label>
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">Data nasterii (ZZ/LL/AAAA)</label>
               <input
-                type="date"
+                type="text"
                 value={dateOfBirth}
-                onChange={(e) => setDateOfBirth(e.target.value)}
+                onChange={(e) => {
+                  let v = e.target.value.replace(/[^0-9]/g, "");
+                  if (v.length > 8) v = v.slice(0, 8);
+                  if (v.length >= 5) v = v.slice(0, 2) + "/" + v.slice(2, 4) + "/" + v.slice(4);
+                  else if (v.length >= 3) v = v.slice(0, 2) + "/" + v.slice(2);
+                  setDateOfBirth(v);
+                }}
                 required
-                max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]}
+                maxLength={10}
                 className="input-field w-full"
+                placeholder="31/12/2000"
               />
               <p className="text-xs text-text-muted mt-1">Trebuie sa ai cel putin 18 ani.</p>
+            </div>
+
+            {/* Terms and conditions checkbox */}
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="acceptTermsProfile"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer accent-[var(--primary)]"
+              />
+              <label htmlFor="acceptTermsProfile" className="text-sm text-text-secondary leading-relaxed cursor-pointer">
+                Înscriindu-vă, acceptați{" "}
+                <Link href="/termeni" target="_blank" className="text-primary hover:text-primary-hover font-medium underline">
+                  termenii și condițiile
+                </Link>{" "}
+                și{" "}
+                <Link href="/confidentialitate" target="_blank" className="text-primary hover:text-primary-hover font-medium underline">
+                  politica de confidențialitate
+                </Link>.
+              </label>
             </div>
 
             <button
@@ -202,7 +271,9 @@ export default function CompleteProfilePage() {
         <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
       </div>
     }>
-      <CompleteProfileForm />
+      <GoogleReCaptchaProvider reCaptchaKey={RECAPTCHA_SITE_KEY}>
+        <CompleteProfileForm />
+      </GoogleReCaptchaProvider>
     </Suspense>
   );
 }
