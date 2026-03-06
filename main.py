@@ -263,16 +263,6 @@ def _init_db():
     """)
     conn.commit()
     conn.close()
-    
-    # Curăță analizele vechi la startup pentru a forța regenerarea cu promptul actualizat
-    try:
-        conn2 = _db_connect()
-        conn2.execute("DELETE FROM saved_analyses")
-        conn2.commit()
-        conn2.close()
-        print("🧹 [STARTUP] Cache analize vechi curățat — se vor regenera cu promptul nou.")
-    except:
-        pass
 
 async def auto_sync_worker():
     while True:
@@ -638,17 +628,18 @@ def get_api_sports_data(sport: str, home_team: str, match_date: date) -> Dict:
         "football": "v3.football.api-sports.io",
         "basketball": "v1.basketball.api-sports.io",
         "hockey": "v1.hockey.api-sports.io",
-        "baseball": "v1.baseball.api-sports.io"
+        "baseball": "v1.baseball.api-sports.io",
+        "tennis": "v3.tennis.api-sports.io"
     }
     
     if sport not in host_map: return {}
     host = host_map[sport]
     headers = {"x-rapidapi-host": host, "x-rapidapi-key": api_key}
-    kw = get_kw(home_team).lower()
+    kw = get_kw(home_team, sport).lower()
     season = match_date.year
     
     try:
-        path = "fixtures" if sport in ["football"] else "games"
+        path = "fixtures" if sport in ["football", "tennis"] else "games"
         r = requests.get(f"https://{host}/{path}?date={match_date}", headers=headers, timeout=10).json()
         matches = r.get("response", [])
         
@@ -943,12 +934,17 @@ def get_premium_tennis_data(home_team, away_team, match_date):
         return json.dumps(stats, indent=2, ensure_ascii=False)
     except Exception as e: return f"Eroare Tenis: {e}"
 
-def get_kw(name: str) -> str:
-    """Extrage cuvântul cheie relevant din numele unei echipe pentru matching."""
+def get_kw(name: str, sport: str = "") -> str:
+    """Extrage cuvântul cheie relevant din numele unei echipe/jucător pentru matching."""
     if not name: return ""
     junk = {'fc', 'united', 'city', 'real', 'sporting', 'athletic', 'club', 'sc', 'ac', 'st', 'fcsb', 'dinamo', 'cs', 'afc', 'cf', 'as'}
     parts = [w for w in name.replace('-', ' ').split() if len(w) > 2 and w.lower() not in junk]
-    return max(parts, key=len) if parts else name.split()[0]
+    if not parts:
+        return name.split()[0]
+    # For tennis player names, prefer the LAST word (surname) as it's more unique
+    if sport == "tennis":
+        return parts[-1]
+    return max(parts, key=len)
 
 def get_premium_baseball_data(home_team, away_team, match_date):
     api_key = os.getenv("API_SPORTS_KEY")
@@ -1000,6 +996,24 @@ def get_premium_baseball_data(home_team, away_team, match_date):
     except:
         return "{}"
 
+
+@app.get("/analyze-cached")
+def analyze_cached(sport: str = Query(""), home_team: str = Query(""), away_team: str = Query(""), match_date: str = Query("")):
+    """
+    Lightweight cache-only endpoint. Returns saved analysis instantly if it exists.
+    No auth required, no external API calls, no AI generation.
+    """
+    if not sport or not home_team or not away_team or not match_date:
+        return {"cached": False}
+    seif_key = f"{sport}_{home_team}_{away_team}_{match_date}".replace(" ", "_").lower()
+    conn = _db_connect()
+    row = conn.execute("SELECT analysis_json FROM saved_analyses WHERE match_key=?", (seif_key,)).fetchone()
+    conn.close()
+    if row:
+        return {"cached": True, "analysis": json.loads(row["analysis_json"])}
+    return {"cached": False}
+
+
 @app.post("/analyze")
 async def analyze(
     data: AnalyzeRequest,
@@ -1011,18 +1025,31 @@ async def analyze(
     Unește calculul matematic Python cu Promptul Expert.
     Protejată prin Firebase Auth + tier-based quotas.
     """
-    # Firebase auth (preferred) or legacy API key
+    # ── Check cache FIRST (before auth/quota — cached analyses are free) ──
+    seif_key = f"{data.sport}_{data.home_team}_{data.away_team}_{data.match_date}".replace(" ", "_").lower()
+    conn = _db_connect()
+    cur = conn.cursor()
+    cur.execute("SELECT analysis_json FROM saved_analyses WHERE match_key=?", (seif_key,))
+    row = cur.fetchone()
+    
+    if row:
+        conn.close()
+        print(f"💎 [SEIF] Analiză livrată instant din memorie pentru: {data.home_team}")
+        return {"analysis": json.loads(row["analysis_json"])}
+
+    # ── No cache — authenticate and check quota ──
     firebase_uid = None
     if authorization and authorization.startswith("Bearer "):
         decoded = await verify_firebase_token(authorization)
         firebase_uid = decoded["uid"]
         sub = get_user_subscription(firebase_uid)
-        if sub["status"] not in ("active", "canceled"):  # canceled = still has access until period end
+        if sub["status"] not in ("active", "canceled"):
             raise HTTPException(status_code=403, detail="Abonament inactiv. Alege un plan.")
         check_analysis_quota(firebase_uid, sub["plan"])
     else:
         require_api_key(x_api_key)
 
+    # ── No cache — fetch premium data ──
     premium_raw = get_api_sports_data(data.sport, data.home_team, data.match_date)
     
     home_id = premium_raw.get("basic_info", {}).get("teams", {}).get("home", {}).get("id")
@@ -1038,21 +1065,10 @@ async def analyze(
         "detalii_premium": premium_raw
     }
 
-    seif_key = f"{data.sport}_{data.home_team}_{data.away_team}_{data.match_date}".replace(" ", "_").lower()
-    conn = _db_connect()
-    cur = conn.cursor()
-    cur.execute("SELECT analysis_json FROM saved_analyses WHERE match_key=?", (seif_key,))
-    row = cur.fetchone()
-    
-    if row:
-        conn.close()
-        print(f"💎 [SEIF] Analiză livrată instant din memorie pentru: {data.home_team}")
-        return {"analysis": json.loads(row["analysis_json"])}
-
     odds_str = "COTE_LIPSĂ: Nu oferi nicio cotă pe ecran. Nu inventa. Nu te plânge de lipsa lor."
     try:
-        home_kw = get_kw(data.home_team)
-        away_kw = get_kw(data.away_team)
+        home_kw = get_kw(data.home_team, data.sport)
+        away_kw = get_kw(data.away_team, data.sport)
         odds_prefix = SPORT_TO_ODDS_PREFIX.get(data.sport, "")
         
         # Pas 1: Căutare strictă — ambele echipe + sport corect
@@ -1064,14 +1080,26 @@ async def analyze(
         """, (f"%{home_kw}%", f"%{away_kw}%", f"{odds_prefix}%"))
         odds_row = cur.fetchone()
         
-        # Pas 2: Fallback — doar echipa gazdă + sport corect
+        # Pas 2: Fallback — doar echipa gazdă + sport corect (use both first+last name for tennis)
         if not odds_row:
-            cur.execute("""
-                SELECT bookmakers_json, match_title, sport_key FROM match_odds 
-                WHERE match_title LIKE ? COLLATE NOCASE 
-                AND sport_key LIKE ?
-            """, (f"%{home_kw}%", f"{odds_prefix}%"))
-            odds_row = cur.fetchone()
+            if data.sport == "tennis":
+                # For tennis, use full surname + first name to avoid cross-matching
+                home_parts = data.home_team.strip().split()
+                if len(home_parts) >= 2:
+                    cur.execute("""
+                        SELECT bookmakers_json, match_title, sport_key FROM match_odds 
+                        WHERE match_title LIKE ? COLLATE NOCASE 
+                        AND match_title LIKE ? COLLATE NOCASE
+                        AND sport_key LIKE ?
+                    """, (f"%{home_parts[0]}%", f"%{home_parts[-1]}%", f"{odds_prefix}%"))
+                    odds_row = cur.fetchone()
+            else:
+                cur.execute("""
+                    SELECT bookmakers_json, match_title, sport_key FROM match_odds 
+                    WHERE match_title LIKE ? COLLATE NOCASE 
+                    AND sport_key LIKE ?
+                """, (f"%{home_kw}%", f"{odds_prefix}%"))
+                odds_row = cur.fetchone()
         
         if odds_row:
             odds_str = odds_row["bookmakers_json"]

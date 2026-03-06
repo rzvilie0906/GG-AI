@@ -121,6 +121,9 @@ export async function loadFixtures(
   }
 }
 
+// ── Frontend analysis cache (avoids re-fetching already loaded analyses) ──
+const _analysisCache = new Map<string, AnalysisResult>();
+
 export async function analyzeMatch(
   sport: string,
   leagueName: string,
@@ -132,16 +135,25 @@ export async function analyzeMatch(
   status?: string,
   startTimeUtc?: string
 ): Promise<AnalysisResult> {
-  // Load context (optional)
-  let ctx = null;
+  // Check frontend in-memory cache first (instant, no network)
+  const cacheKey = `${sport}_${homeTeam}_${awayTeam}_${matchDate}`.replace(/ /g, "_").toLowerCase();
+  const cached = _analysisCache.get(cacheKey);
+  if (cached) return cached;
+
+  // Check backend cache (lightweight, no auth, no AI — instant if saved)
   try {
-    const cr = await fetch(`${API_BASE}/context?match_key=${encodeURIComponent(matchKey)}`, { cache: "no-store" });
+    const cacheUrl = `${API_BASE}/analyze-cached?sport=${encodeURIComponent(sport)}&home_team=${encodeURIComponent(homeTeam)}&away_team=${encodeURIComponent(awayTeam)}&match_date=${encodeURIComponent(matchDate)}`;
+    const cr = await fetch(cacheUrl, { cache: "no-store" });
     if (cr.ok) {
       const cd = await cr.json();
-      ctx = cd.context || null;
+      if (cd.cached && cd.analysis) {
+        _analysisCache.set(cacheKey, cd.analysis);
+        return cd.analysis;
+      }
     }
   } catch {}
 
+  // No cache — full analyze with auth + AI generation
   const payload = {
     sport,
     league: leagueName,
@@ -153,7 +165,6 @@ export async function analyzeMatch(
       provider,
       status,
       start_time_utc: startTimeUtc,
-      context: ctx,
     }),
   };
 
@@ -181,7 +192,9 @@ export async function analyzeMatch(
   }
 
   const data = await r.json();
-  return data.analysis || {};
+  const analysis = data.analysis || {};
+  _analysisCache.set(cacheKey, analysis);
+  return analysis;
 }
 
 export async function loadDailyTicket(type: string = "mixed"): Promise<DailyTicketData> {

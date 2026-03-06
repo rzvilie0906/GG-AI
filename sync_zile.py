@@ -131,7 +131,6 @@ def sync_urmatoarele_7_zile():
                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """, (internal_id, sport, league, league_name, start_time, status, home_team, away_team, "espn", event_id, search_text))
                                 total_meciuri += 1
-                            total_meciuri += 1
                 except:
                     pass
                     
