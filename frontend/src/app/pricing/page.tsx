@@ -119,7 +119,13 @@ function PricingContent() {
       }
 
       setSuccessMsg(data.message || "Planul a fost schimbat cu succes.");
-      await refreshSubscription();
+      // For upgrades, the plan change takes effect after payment via webhook
+      // Refresh after a short delay to give webhook time to process
+      if (data.effective === "after_payment") {
+        setTimeout(() => refreshSubscription(), 3000);
+      } else {
+        await refreshSubscription();
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Eroare necunoscuta.");
     } finally {
