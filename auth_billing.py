@@ -134,6 +134,14 @@ def init_users_db():
             PRIMARY KEY (uid, usage_date)
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_match_views (
+            uid TEXT NOT NULL,
+            match_key TEXT NOT NULL,
+            usage_date TEXT NOT NULL,
+            PRIMARY KEY (uid, match_key, usage_date)
+        )
+    """)
     conn.commit()
     conn.close()
     print("✅ Users DB inițializat (users.db)")
@@ -223,6 +231,48 @@ def _increment_usage(uid: str, column: str):
     """, (uid, today))
     conn.commit()
     conn.close()
+
+
+def _increment_unique_analysis(uid: str, match_key: str) -> bool:
+    """
+    Increment analysis counter only if this user hasn't viewed this match today.
+    Returns True if counter was incremented (first view), False if already seen.
+    """
+    today = _usage_date_key()
+    conn = _users_connect()
+    # Try to insert — if already exists, it's a duplicate view
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO user_match_views (uid, match_key, usage_date) VALUES (?, ?, ?)",
+        (uid, match_key, today)
+    )
+    if cur.rowcount == 0:
+        conn.close()
+        return False  # Already viewed today
+    # First view — increment counter
+    conn.execute("""
+        INSERT INTO daily_usage (uid, usage_date, analyses_count, risk_analyses_count)
+        VALUES (?, ?, 0, 0)
+        ON CONFLICT(uid, usage_date) DO NOTHING
+    """, (uid, today))
+    conn.execute("""
+        UPDATE daily_usage SET analyses_count = analyses_count + 1
+        WHERE uid = ? AND usage_date = ?
+    """, (uid, today))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def _already_viewed_today(uid: str, match_key: str) -> bool:
+    """Check if user already viewed this match today (no counter impact)."""
+    today = _usage_date_key()
+    conn = _users_connect()
+    row = conn.execute(
+        "SELECT 1 FROM user_match_views WHERE uid = ? AND match_key = ? AND usage_date = ?",
+        (uid, match_key, today)
+    ).fetchone()
+    conn.close()
+    return row is not None
 
 # ─── Firebase Token Verification ──────────────────────────────────────────────
 
@@ -837,3 +887,90 @@ def _handle_payment_failed(invoice: dict):
 
     _update_user_subscription(user["uid"], status="past_due")
     print(f"⚠️ [Webhook] Payment failed: {user['uid']} → past_due")
+
+
+# ── Support Tickets ───────────────────────────────────────────────────────────
+
+PLAN_PRIORITY = {"elite": 1, "pro": 2, "weekly": 3}
+
+def init_support_db():
+    """Create support_tickets table if it doesn't exist."""
+    conn = _users_connect()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS support_tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT,
+            email TEXT NOT NULL,
+            plan TEXT,
+            priority INTEGER DEFAULT 9,
+            message TEXT NOT NULL,
+            attachment_path TEXT,
+            status TEXT DEFAULT 'open',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+@billing_router.post("/api/support/ticket")
+async def create_support_ticket(request: Request, authorization: Optional[str] = Header(default=None)):
+    """Submit a support ticket. Authenticated users get priority based on plan."""
+    import shutil
+
+    form = await request.form()
+    email = form.get("email", "").strip()
+    message = form.get("message", "").strip()
+    attachment = form.get("attachment")
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Adresa de email este obligatorie.")
+    if not message:
+        raise HTTPException(status_code=400, detail="Mesajul este obligatoriu.")
+    if len(message) > 5000:
+        raise HTTPException(status_code=400, detail="Mesajul nu poate depăși 5000 de caractere.")
+
+    uid = None
+    plan = None
+    priority = 9  # lowest for unauthenticated
+
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            decoded = await verify_firebase_token(authorization)
+            uid = decoded["uid"]
+            user = _get_user(uid)
+            if user:
+                plan = user.get("plan")
+                priority = PLAN_PRIORITY.get(plan, 9)
+        except Exception:
+            pass  # allow ticket submission even if auth fails
+
+    # Save attachment if provided
+    attachment_path = None
+    if attachment and hasattr(attachment, "filename") and attachment.filename:
+        allowed_ext = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".doc", ".docx", ".txt"}
+        ext = os.path.splitext(attachment.filename)[1].lower()
+        if ext not in allowed_ext:
+            raise HTTPException(status_code=400, detail="Tip de fișier neacceptat.")
+        if attachment.size and attachment.size > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Fișierul nu poate depăși 5 MB.")
+
+        os.makedirs("support_attachments", exist_ok=True)
+        safe_name = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uid or 'anon'}{ext}"
+        save_path = os.path.join("support_attachments", safe_name)
+        with open(save_path, "wb") as f:
+            content = await attachment.read()
+            f.write(content)
+        attachment_path = save_path
+
+    init_support_db()
+    conn = _users_connect()
+    conn.execute(
+        """INSERT INTO support_tickets (uid, email, plan, priority, message, attachment_path)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (uid, email, plan, priority, message, attachment_path),
+    )
+    conn.commit()
+    conn.close()
+
+    print(f"📩 [Support] New ticket from {email} (plan: {plan or 'none'}, priority: {priority})")
+    return {"status": "ok", "message": "Cererea a fost trimisă cu succes."}
