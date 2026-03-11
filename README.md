@@ -1,4 +1,4 @@
-# AIlie — Analizator AI de Pariuri Sportive 🏆
+# GG-AI — Analizator AI de Pariuri Sportive 🏆
 
 Platformă SaaS de analiză AI pentru pariuri sportive. Generează bilete zilnice cu valoare, scoring de încredere și sfaturi AI pentru **fotbal**, **baschet**, **hochei**, **tenis** și **baseball**.
 
