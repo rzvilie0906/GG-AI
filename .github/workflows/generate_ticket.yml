@@ -64,3 +64,23 @@ jobs:
 
       - name: Run generate_ticket.py
         run: python generate_ticket.py
+
+      - name: Verify tickets in Firestore
+        run: |
+          python -c "
+          import firebase_admin
+          from firebase_admin import credentials, firestore
+          cred = credentials.Certificate('firebase-service-account.json')
+          if not firebase_admin._apps:
+              firebase_admin.initialize_app(cred)
+          db = firestore.client()
+          for cat in ['mixed', 'football', 'basketball', 'hockey']:
+              doc = db.collection('daily_tickets').document(cat).get()
+              if doc.exists:
+                  d = doc.to_dict()
+                  n = len(d.get('ticket', []))
+                  print(f'  {cat}: {n} picks, date={d.get("date", "?")}')
+              else:
+                  print(f'  {cat}: NOT FOUND in Firestore!')
+          print('Done.')
+          "

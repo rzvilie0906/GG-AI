@@ -35,20 +35,17 @@ def _get_firestore_client():
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
         else:
-            print(f"[WARN] Firebase cred file not found: {cred_path}. Tickets won't be uploaded.")
             return None
     return firestore.client()
 
 def _upload_ticket_to_firestore(cat_name: str, data: dict):
     """Upload a ticket to Firestore so the deployed backend can serve it."""
-    try:
-        db = _get_firestore_client()
-        if db is None:
-            return
-        db.collection("daily_tickets").document(cat_name).set(data)
-        print(f"[OK] Bilet {cat_name} uploadat în Firestore.")
-    except Exception as e:
-        print(f"[WARN] Firestore upload failed for {cat_name}: {e}")
+    db = _get_firestore_client()
+    if db is None:
+        print(f"[ERR] Cannot upload {cat_name}: Firebase not initialized (missing service account file)")
+        sys.exit(1)
+    db.collection("daily_tickets").document(cat_name).set(data)
+    print(f"[OK] Bilet {cat_name} uploadat în Firestore.")
 
 def save_empty(cat_name: str, today_display: str):
     """Salvează un bilet gol când nu sunt meciuri disponibile."""
