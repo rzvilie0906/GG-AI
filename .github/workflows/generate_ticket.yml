@@ -37,9 +37,9 @@ jobs:
             echo "::error::FIREBASE_SERVICE_ACCOUNT secret is empty or not set"
             exit 1
           fi
-          echo "$FIREBASE_SA" > firebase-service-account.json
-          python -c "import json, sys; json.load(open('firebase-service-account.json')); print('Firebase SA JSON is valid')" || {
-            echo "::error::firebase-service-account.json is not valid JSON"
+          echo "$FIREBASE_SA" | base64 -d > firebase-service-account.json
+          python -c "import json; json.load(open('firebase-service-account.json')); print('Firebase SA JSON is valid')" || {
+            echo "::error::firebase-service-account.json is not valid JSON after base64 decode"
             exit 1
           }
         env:
