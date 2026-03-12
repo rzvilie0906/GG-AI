@@ -36,7 +36,13 @@ export function labelSport(s: string): string {
 export function fmtTime(isoUtc: string | undefined): string {
   if (!isoUtc) return "—";
   const d = new Date(isoUtc);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleString("ro-RO", { hour: "2-digit", minute: "2-digit" });
+  return isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleString("ro-RO", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Bucharest"
+      });
 }
 
 export function normKey(x: string): string {
@@ -48,5 +54,5 @@ export function buildMatchKey(sport: string, league: string, home: string, away:
 }
 
 export function nowStr(): string {
-  return new Date().toLocaleTimeString();
+  return new Date().toLocaleTimeString("ro-RO", { timeZone: "Europe/Bucharest" });
 }

@@ -105,8 +105,8 @@ export default function Dashboard() {
   }, [user, getIdToken, router]);
 
   const handleSignOut = async () => {
+    window.location.href = "/";
     await signOut();
-    router.push("/auth/signin");
   };
 
   const handleUpgradePlan = () => {
@@ -114,14 +114,33 @@ export default function Dashboard() {
   };
 
   // ── Filtered fixtures ──
-  const filteredFixtures = searchQuery.trim()
+
+  function isInSelectedDay(fixture: Fixture, selectedIso: string) {
+    // selectedIso is YYYY-MM-DD (Europe/Bucharest)
+    // Compute the start and end of the selected day in Europe/Bucharest
+    const [year, month, day] = selectedIso.split("-").map(Number);
+    const tz = "Europe/Bucharest";
+    // Start of day in Europe/Bucharest
+    const start = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    // End of day in Europe/Bucharest
+    const end = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+    // Convert start/end to timestamps in Europe/Bucharest
+    const startRO = new Date(start.toLocaleString("en-US", { timeZone: tz }));
+    const endRO = new Date(end.toLocaleString("en-US", { timeZone: tz }));
+    // Convert fixture time to Europe/Bucharest
+    const fixtureRO = new Date(new Date(fixture.start_time_utc).toLocaleString("en-US", { timeZone: tz }));
+    return fixtureRO >= startRO && fixtureRO <= endRO;
+  }
+
+  const filteredFixtures = (searchQuery.trim()
     ? allFixtures.filter(
         (m) =>
           (m.home_team || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
           (m.away_team || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
           (m.league_name || "").toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : allFixtures;
+    : allFixtures
+  ).filter((m) => isInSelectedDay(m, selectedDate));
 
   // ── Refresh all data ──
   const refreshAll = useCallback(
@@ -350,7 +369,7 @@ export default function Dashboard() {
   const riskQuotaExceeded = hasRiskAnalyzer && maxRisk !== null && maxRisk !== undefined && usedRisk >= maxRisk;
 
   return (
-    <div className="h-screen overflow-hidden">
+    <div className="h-screen overflow-hidden lg:overflow-hidden overflow-y-auto">
       <StarBackground />
       <Topbar
         apiOnline={apiOnline}
@@ -433,10 +452,10 @@ export default function Dashboard() {
       </div>
 
       {/* ═══ Main 3-Column Layout ═══ */}
-      <main className="grid grid-cols-1 lg:grid-cols-[320px_1fr_340px] gap-0 h-[calc(100vh-56px-52px)] max-w-[1920px] mx-auto">
+      <main className="grid grid-cols-1 lg:grid-cols-[320px_1fr_340px] gap-0 lg:h-[calc(100vh-56px-52px)] max-w-[1920px] mx-auto">
 
         {/* ── LEFT: Match Explorer ── */}
-        <aside className="flex flex-col h-full border-r border-[rgba(255,255,255,0.06)] bg-surface/30">
+        <aside className="flex flex-col h-[calc(100vh-56px-52px)] lg:h-full min-h-0 overflow-hidden border-r border-[rgba(255,255,255,0.06)] bg-surface/30">
           {/* Controls inside sidebar */}
           <div className="p-3 flex flex-col gap-2.5 border-b border-[rgba(255,255,255,0.06)]">
             {/* Tabs */}

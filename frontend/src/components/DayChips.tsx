@@ -7,12 +7,17 @@ interface DayChipsProps {
   onSelectDate: (iso: string) => void;
 }
 
+
 export default function DayChips({ selectedDate, onSelectDate }: DayChipsProps) {
-  const base = new Date();
-  base.setHours(0, 0, 0, 0);
+  // Get current date in Europe/Bucharest timezone, at 00:00
+  const now = new Date();
+  const roNow = new Date(
+    now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" })
+  );
+  roNow.setHours(0, 0, 0, 0);
 
   const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(base.getTime() + i * 86400000);
+    const d = new Date(roNow.getTime() + i * 86400000);
     return { date: d, iso: isoFromLocalDate(d), label: chipLabel(d, i), short: roShort(d) };
   });
 

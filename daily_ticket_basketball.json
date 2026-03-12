@@ -1,30 +1,30 @@
 {
   "ticket": [
     {
-      "match": "New York Knicks vs Oklahoma City Thunder",
-      "league": "NBA",
-      "market": "Total Points",
-      "pick": "Over 221.5",
-      "odds": "1.94",
-      "reasoning": "Both teams have shown offensive capabilities, and the total points line is set at a reasonable level. The odds for over 221.5 points provide good value given the scoring potential of both teams."
-    },
-    {
-      "match": "Milwaukee Bucks vs Atlanta Hawks",
+      "match": "Miami Heat vs Milwaukee Bucks",
       "league": "NBA",
       "market": "1X2",
-      "pick": "Milwaukee Bucks",
-      "odds": "2.0",
-      "reasoning": "The odds for Milwaukee Bucks to win are attractive at 2.0. Despite being slight underdogs, the Bucks have the potential to outperform the Hawks, making this a value bet."
+      "pick": "Miami Heat",
+      "odds": "1.43",
+      "reasoning": "Miami Heat are playing at home and despite some key absences, they are still favored to win against the Milwaukee Bucks. The odds of 1.43 provide a reasonable value considering the circumstances."
     },
     {
-      "match": "Boston Celtics vs Charlotte Hornets",
+      "match": "Memphis Grizzlies vs Dallas Mavericks",
       "league": "NBA",
-      "market": "Total Points",
-      "pick": "Under 214.5",
-      "odds": "1.95",
-      "reasoning": "The Celtics are known for their strong defense, and the Hornets may struggle to score against them. The under 214.5 points line offers good value considering the defensive strengths of the Celtics."
+      "market": "1X2",
+      "pick": "Dallas Mavericks",
+      "odds": "1.5",
+      "reasoning": "Dallas Mavericks are slightly favored to win against the Memphis Grizzlies. The odds of 1.5 offer good value given the Mavericks' stronger lineup and recent form."
+    },
+    {
+      "match": "Oklahoma City Thunder vs Boston Celtics",
+      "league": "NBA",
+      "market": "Spread",
+      "pick": "Oklahoma City Thunder -6.5",
+      "odds": "1.88",
+      "reasoning": "Oklahoma City Thunder are expected to cover the spread against the Boston Celtics. With key players missing for the Celtics, the Thunder have a good chance to win by a margin greater than 6.5 points."
     }
   ],
-  "total_odds": 7.57,
-  "date": "04.03.2026"
+  "total_odds": 4.03,
+  "date": "12.03.2026"
 }

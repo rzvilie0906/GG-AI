@@ -1,30 +1,30 @@
 {
   "ticket": [
     {
-      "match": "Rayo Vallecano vs Real Oviedo",
-      "league": "La Liga 2",
-      "market": "1X2",
-      "pick": "Rayo Vallecano",
-      "odds": "1.70",
-      "reasoning": "Rayo Vallecano are o formă bună acasă și este favorită clară în fața lui Real Oviedo, care are dificultăți în deplasare. Cota de 1.70 oferă o valoare bună pentru o victorie a gazdelor."
+      "match": "Bologna vs AS Roma",
+      "league": "UEFA Europa League",
+      "market": "Total Goluri",
+      "pick": "Sub 2.5",
+      "odds": "1.78",
+      "reasoning": "Bologna are o defensivă solidă, primind doar 0.7 goluri pe meci, iar AS Roma se confruntă cu absențe importante. Este de așteptat un meci strâns cu puține goluri."
     },
     {
-      "match": "New York Knicks vs Oklahoma City Thunder",
+      "match": "Detroit Pistons vs Philadelphia 76ers",
       "league": "NBA",
-      "market": "1X2",
-      "pick": "New York Knicks",
-      "odds": "1.69",
-      "reasoning": "New York Knicks are un avantaj acasă și o formă mai bună comparativ cu Oklahoma City Thunder. Cota de 1.69 este atractivă pentru o victorie a gazdelor."
+      "market": "Handicap",
+      "pick": "Philadelphia 76ers +14.5",
+      "odds": "1.93",
+      "reasoning": "Deși Detroit Pistons sunt favoriți, absențele de ambele părți pot echilibra meciul. Philadelphia 76ers ar putea acoperi handicapul de +14.5 puncte."
     },
     {
-      "match": "Detroit Red Wings vs Vegas Golden Knights",
+      "match": "Boston Bruins vs San Jose Sharks",
       "league": "NHL",
-      "market": "Total Puncte",
-      "pick": "Under 6.0",
-      "odds": "1.91",
-      "reasoning": "Ambele echipe au o defensivă solidă și tind să aibă meciuri cu puține goluri. Cota de 1.91 pentru sub 6.0 goluri oferă o valoare bună, având în vedere tendințele defensive ale ambelor echipe."
+      "market": "1X2",
+      "pick": "Boston Bruins",
+      "odds": "1.88",
+      "reasoning": "Boston Bruins sunt favoriți și au o cotă bună pentru victorie. San Jose Sharks au o cotă mai mare, indicând o probabilitate mai mică de a câștiga."
     }
   ],
-  "total_odds": 5.49,
-  "date": "04.03.2026"
+  "total_odds": 6.46,
+  "date": "12.03.2026"
 }

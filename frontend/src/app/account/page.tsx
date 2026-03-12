@@ -173,8 +173,8 @@ export default function AccountPage() {
   }
 
   async function handleSignOut() {
+    window.location.href = "/";
     await signOut();
-    router.push("/auth/signin");
   }
 
   const planLabels: Record<string, string> = {

@@ -67,7 +67,7 @@ export default function DailyTicket() {
         {loading && (
           <div className="flex flex-col items-center py-8 gap-3">
             <div className="w-8 h-8 border-[2.5px] border-primary/20 border-t-primary rounded-full animate-spin" />
-            <div className="font-medium text-sm text-text-secondary">Se generează biletul...</div>
+            <div className="font-medium text-sm text-text-secondary">Se generează biletul zilei...</div>
           </div>
         )}
 
@@ -83,7 +83,10 @@ export default function DailyTicket() {
           <>
             {data.ticket.length === 0 ? (
               <div className="text-center text-text-muted text-xs py-5">
-                Nu există bilet generat pentru azi.
+                {data.message
+                  ? <span>{data.message}</span>
+                  : <span>Nu există bilet generat pentru azi. Revino după ora 10:00 pentru a vedea biletul zilei!</span>
+                }
               </div>
             ) : (
               <>

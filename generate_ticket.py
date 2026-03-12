@@ -1,9 +1,11 @@
+
 import os
 import json
 import sqlite3
 import time
 import asyncio
 from datetime import datetime, timedelta, timezone
+import pytz
 from dotenv import load_dotenv
 from openai import OpenAI
 from main import analyze, AnalyzeRequest 
@@ -30,17 +32,19 @@ async def generate_all_tickets():
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     
-    now_local = datetime.now() 
+
+    ro_tz = pytz.timezone("Europe/Bucharest")
+    now_local = datetime.now(ro_tz)
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Ticket window: 10:00 today -> 10:00 tomorrow (Romanian time)
     # If before 10:00, the window is from yesterday 10:00 to today 10:00
     if now_local.hour < 10:
-        window_start = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0)
-        window_end = now_local.replace(hour=10, minute=0, second=0)
+        window_start = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+        window_end = now_local.replace(hour=10, minute=0, second=0, microsecond=0)
     else:
-        window_start = now_local.replace(hour=10, minute=0, second=0)
-        window_end = (now_local + timedelta(days=1)).replace(hour=10, minute=0, second=0)
+        window_start = now_local.replace(hour=10, minute=0, second=0, microsecond=0)
+        window_end = (now_local + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
 
     today_display = window_start.strftime("%d.%m.%Y")
     start_str = window_start.strftime("%Y-%m-%dT%H:%M:%SZ")

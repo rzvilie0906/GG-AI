@@ -229,7 +229,7 @@ export default function TermeniPage() {
                 ne puteți contacta la:
               </p>
               <ul className="list-none space-y-1 mt-2">
-                <li>📧 Email: contact@gg-ai.ro</li>
+                <li>📧 Email: contact@ggai.bet</li>
               </ul>
             </section>
           </div>
