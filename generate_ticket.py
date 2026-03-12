@@ -31,6 +31,31 @@ async def generate_all_tickets():
     conn = sqlite3.connect("sports.db")
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+
+    # Ensure tables exist (CI runners start with no DB)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            id TEXT PRIMARY KEY, sport TEXT, league_key TEXT, league_name TEXT,
+            start_time_utc TEXT, status TEXT, home_team TEXT, away_team TEXT,
+            provider TEXT, provider_event_id TEXT, search_text TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS match_odds (
+            match_title TEXT PRIMARY KEY,
+            sport_key TEXT,
+            bookmakers_json TEXT,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS saved_analyses (
+            match_key TEXT PRIMARY KEY,
+            analysis_json TEXT,
+            saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
     
 
     ro_tz = pytz.timezone("Europe/Bucharest")
