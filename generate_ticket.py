@@ -2,6 +2,7 @@
 import os
 import json
 import sqlite3
+import sys
 import time
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,9 @@ from firebase_admin import credentials, firestore
 
 load_dotenv()
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
+if not OPENAI_KEY:
+    print("[FATAL] OPENAI_API_KEY is not set! Cannot generate tickets.")
+    sys.exit(1)
 client = OpenAI(api_key=OPENAI_KEY, max_retries=1)
 
 AMERICA_LEAGUES = [
@@ -83,7 +87,12 @@ async def generate_all_tickets():
         )
     """)
     conn.commit()
-    
+
+    # Verify DB has data
+    event_count = cur.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+    print(f"[DB] events table has {event_count} rows")
+    if event_count == 0:
+        print("[WARN] events table is EMPTY — auto_sync may have failed. All tickets will be empty.")
 
     ro_tz = pytz.timezone("Europe/Bucharest")
     now_local = datetime.now(ro_tz)
@@ -320,6 +329,7 @@ async def generate_all_tickets():
 
         except Exception as e:
             print(f"[ERR] {cat_name}: {e}")
+            save_empty(cat_name, today_display)
 
     conn.close()
 

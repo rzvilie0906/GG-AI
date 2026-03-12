@@ -50,5 +50,17 @@ jobs:
           ODDS_API_KEYS: ${{ secrets.ODDS_API_KEYS }}
         run: python auto_sync_master.py
 
+      - name: Verify sports.db has data
+        run: |
+          python -c "
+import sqlite3
+conn = sqlite3.connect('sports.db')
+count = conn.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+print(f'Events in DB: {count}')
+if count == 0:
+    print('::warning::No events in sports.db - tickets will be empty')
+conn.close()
+"
+
       - name: Run generate_ticket.py
         run: python generate_ticket.py

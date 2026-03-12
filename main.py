@@ -551,7 +551,7 @@ async def get_daily_ticket(
             doc = db.collection("daily_tickets").document(cat).get()
             if doc.exists:
                 data = doc.to_dict()
-                if data.get("date") == expected_date and data.get("ticket"):
+                if data.get("date") == expected_date and data.get("ticket") is not None:
                     return data
         except Exception:
             pass
