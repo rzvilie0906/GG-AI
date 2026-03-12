@@ -67,7 +67,7 @@ jobs:
 
       - name: Verify tickets in Firestore
         run: |
-          python -c "
+          python <<'PY'
           import firebase_admin
           from firebase_admin import credentials, firestore
           cred = credentials.Certificate('firebase-service-account.json')
@@ -83,4 +83,4 @@ jobs:
               else:
                   print(f'  {cat}: NOT FOUND in Firestore!')
           print('Done.')
-          "
+          PY
