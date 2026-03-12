@@ -543,6 +543,19 @@ async def get_daily_ticket(
     if type not in valid_types: type = "mixed"
     file_name = f"daily_ticket_{type}.json"
 
+    # Helper: try to fetch today's ticket from Firestore
+    def _load_from_firestore(cat: str, expected_date: str):
+        try:
+            from firebase_admin import firestore as _fs
+            db = _fs.client()
+            doc = db.collection("daily_tickets").document(cat).get()
+            if doc.exists:
+                data = doc.to_dict()
+                if data.get("date") == expected_date and data.get("ticket"):
+                    return data
+        except Exception:
+            pass
+        return None
 
     try:
         if os.path.exists(file_name):
@@ -552,6 +565,11 @@ async def get_daily_ticket(
                 return data
     except Exception:
         pass
+
+    # If local file not found/stale, check Firestore (tickets uploaded by CI)
+    fs_data = _load_from_firestore(type, ticket_date)
+    if fs_data:
+        return fs_data
 
 
     async with ticket_lock:

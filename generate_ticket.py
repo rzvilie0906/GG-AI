@@ -8,7 +8,10 @@ from datetime import datetime, timedelta, timezone
 import pytz
 from dotenv import load_dotenv
 from openai import OpenAI
-from main import analyze, AnalyzeRequest 
+from main import analyze, AnalyzeRequest
+
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 load_dotenv()
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
@@ -20,11 +23,35 @@ AMERICA_LEAGUES = [
     "NBA", "NHL", "MLB", "NFL", "NCAA"
 ]
 
+def _get_firestore_client():
+    """Initialize Firebase Admin SDK and return Firestore client."""
+    cred_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_KEY", "firebase-service-account.json")
+    if not firebase_admin._apps:
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+        else:
+            print(f"[WARN] Firebase cred file not found: {cred_path}. Tickets won't be uploaded.")
+            return None
+    return firestore.client()
+
+def _upload_ticket_to_firestore(cat_name: str, data: dict):
+    """Upload a ticket to Firestore so the deployed backend can serve it."""
+    try:
+        db = _get_firestore_client()
+        if db is None:
+            return
+        db.collection("daily_tickets").document(cat_name).set(data)
+        print(f"[OK] Bilet {cat_name} uploadat în Firestore.")
+    except Exception as e:
+        print(f"[WARN] Firestore upload failed for {cat_name}: {e}")
+
 def save_empty(cat_name: str, today_display: str):
     """Salvează un bilet gol când nu sunt meciuri disponibile."""
     data = {"ticket": [], "total_odds": 0, "date": today_display, "message": "Niciun meci disponibil pentru această categorie."}
     with open(f"daily_ticket_{cat_name}.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    _upload_ticket_to_firestore(cat_name, data)
     print(f"[INFO] Bilet {cat_name} gol salvat — niciun meci disponibil.")
 
 async def generate_all_tickets():
@@ -285,6 +312,7 @@ async def generate_all_tickets():
 
             with open(f"daily_ticket_{cat_name}.json", "w", encoding="utf-8") as f:
                 json.dump(result_data, f, ensure_ascii=False, indent=2)
+            _upload_ticket_to_firestore(cat_name, result_data)
             
             print(f"[OK] Bilet {cat_name} salvat. Cota: {result_data['total_odds']}")
             print("⏳ Aștept 65 de secunde pentru resetarea limitei OpenAI...")
