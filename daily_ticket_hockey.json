@@ -1,30 +1,30 @@
 {
   "ticket": [
     {
-      "match": "Detroit Red Wings vs Vegas Golden Knights",
+      "match": "Boston Bruins vs San Jose Sharks",
       "league": "NHL",
       "market": "Total Goals",
-      "pick": "Under 6.0",
-      "odds": "1.80",
-      "reasoning": "Both teams have shown a tendency to play defensively in recent matches, and the odds for under 6.0 goals provide good value within the target range."
+      "pick": "Under 6.5",
+      "odds": "1.75",
+      "reasoning": "Both teams have shown a tendency for lower-scoring games recently. The Sharks struggle offensively, and the Bruins have a solid defense. The odds for Under 6.5 goals provide good value."
     },
     {
-      "match": "Vancouver Canucks vs Carolina Hurricanes",
+      "match": "Buffalo Sabres vs Washington Capitals",
       "league": "NHL",
       "market": "1X2",
-      "pick": "Carolina Hurricanes",
-      "odds": "1.71",
-      "reasoning": "Carolina Hurricanes are in strong form and are favorites against the struggling Vancouver Canucks. The odds of 1.71 offer value for a straight win."
+      "pick": "Buffalo Sabres",
+      "odds": "1.82",
+      "reasoning": "Buffalo Sabres are in better form and playing at home, which gives them an edge. The Capitals have been inconsistent, making the Sabres a solid pick at these odds."
     },
     {
-      "match": "Seattle Kraken vs St. Louis Blues",
+      "match": "Minnesota Wild vs Philadelphia Flyers",
       "league": "NHL",
-      "market": "Total Goals",
-      "pick": "Over 5.5",
-      "odds": "1.85",
-      "reasoning": "Both teams have been involved in high-scoring games recently, and the odds for over 5.5 goals are attractive given their offensive capabilities."
+      "market": "1X2",
+      "pick": "Minnesota Wild",
+      "odds": "1.66",
+      "reasoning": "Minnesota Wild are strong at home and face a Flyers team that has struggled on the road. The odds are within the target range and offer value given the Wild's home advantage."
     }
   ],
-  "total_odds": 5.69,
-  "date": "04.03.2026"
+  "total_odds": 5.29,
+  "date": "12.03.2026"
 }

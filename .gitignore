@@ -1,8 +1,14 @@
 # ── Environment & Secrets ──────────────────────────
 .env
 .env.*
+.env.local
 !.env.example
 firebase-service-account.json
+sports.db
+daily_ticket_basketball.json
+daily_ticket_football.json
+daily_ticket_hockey.json
+daily_ticket_mixed.json
 
 # ── Python ─────────────────────────────────────────
 __pycache__/

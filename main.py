@@ -28,7 +28,8 @@ from prompts import generate_system_prompt
 from auth_billing import (
     billing_router, init_users_db, verify_firebase_token,
     get_user_subscription, check_analysis_quota, check_risk_quota,
-    _increment_usage, _get_user, TIER_LIMITS,
+    _increment_usage, _increment_unique_analysis, _already_viewed_today,
+    _get_user, TIER_LIMITS,
 )
 
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
@@ -46,6 +47,7 @@ if sys.platform == 'win32':
 
 APP_API_KEY = os.environ.get("APP_API_KEY", "")
 MODEL = os.environ.get("MODEL", "gpt-4o") 
+RISK_MODEL = os.environ.get("RISK_MODEL", "gpt-4o-mini")
 TEMPERATURE = float(os.environ.get("TEMPERATURE", "0"))
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1200"))
 
@@ -541,6 +543,7 @@ async def get_daily_ticket(
     if type not in valid_types: type = "mixed"
     file_name = f"daily_ticket_{type}.json"
 
+
     try:
         if os.path.exists(file_name):
             with open(file_name, "r", encoding="utf-8") as f:
@@ -550,6 +553,7 @@ async def get_daily_ticket(
     except Exception:
         pass
 
+
     async with ticket_lock:
         if os.path.exists(file_name):
             with open(file_name, "r", encoding="utf-8") as f:
@@ -558,8 +562,17 @@ async def get_daily_ticket(
                 return data
 
         print(f"⚠️ [FIRST VISITOR] Pornim generarea biletelor...")
-        
+
+        # Romanian message for first visitor after 10:00
+        eta = "aprox. 1 minut"
+        first_visitor_msg = (
+            "Generarea acestui tip de bilet nu este disponibilă în acest moment. "
+            "Motiv posibil: nu există suficiente meciuri pentru această categorie sau biletul zilnic nu a fost încă generat. "
+            "Încercați mai târziu!"
+        )
+
         try:
+
             import sys
             import subprocess
 
@@ -582,11 +595,13 @@ async def get_daily_ticket(
                         return json.load(f)
             else:
                 print(f"❌ Scriptul a crăpat:\n{result.stderr}")
-                
+                return {"ticket": [], "message": first_visitor_msg}
+
         except Exception as e:
             print(f"❌ Eroare la execuție: {e}")
-            
-    return {"ticket": [], "message": "Generarea este în curs sau a eșuat. Reveniți în 2 minute."}
+            return {"ticket": [], "message": first_visitor_msg}
+
+    return {"ticket": [], "message": first_visitor_msg}
     
 @app.post("/verify-ticket")
 def verify_ticket(data: TicketVerifyRequest, request: Request, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
@@ -1025,8 +1040,28 @@ async def analyze(
     Unește calculul matematic Python cu Promptul Expert.
     Protejată prin Firebase Auth + tier-based quotas.
     """
-    # ── Check cache FIRST (before auth/quota — cached analyses are free) ──
+    # ── Authenticate FIRST ──
+    firebase_uid = None
+    user_plan = None
+    if authorization and authorization.startswith("Bearer "):
+        decoded = await verify_firebase_token(authorization)
+        firebase_uid = decoded["uid"]
+        sub = get_user_subscription(firebase_uid)
+        if sub["status"] not in ("active", "canceled"):
+            raise HTTPException(status_code=403, detail="Abonament inactiv. Alege un plan.")
+        user_plan = sub["plan"]
+    else:
+        require_api_key(x_api_key)
+
+    # ── Build match key for cache + view tracking ──
     seif_key = f"{data.sport}_{data.home_team}_{data.away_team}_{data.match_date}".replace(" ", "_").lower()
+
+    # ── Skip quota check if user already viewed this match today ──
+    already_seen = firebase_uid and _already_viewed_today(firebase_uid, seif_key)
+    if not already_seen and firebase_uid and user_plan:
+        check_analysis_quota(firebase_uid, user_plan)
+
+    # ── Check cache ──
     conn = _db_connect()
     cur = conn.cursor()
     cur.execute("SELECT analysis_json FROM saved_analyses WHERE match_key=?", (seif_key,))
@@ -1034,20 +1069,10 @@ async def analyze(
     
     if row:
         conn.close()
-        print(f"💎 [SEIF] Analiză livrată instant din memorie pentru: {data.home_team}")
+        if firebase_uid:
+            _increment_unique_analysis(firebase_uid, seif_key)
+        print(f"💎 [SEIF] Analiză livrată din memorie pentru: {data.home_team}")
         return {"analysis": json.loads(row["analysis_json"])}
-
-    # ── No cache — authenticate and check quota ──
-    firebase_uid = None
-    if authorization and authorization.startswith("Bearer "):
-        decoded = await verify_firebase_token(authorization)
-        firebase_uid = decoded["uid"]
-        sub = get_user_subscription(firebase_uid)
-        if sub["status"] not in ("active", "canceled"):
-            raise HTTPException(status_code=403, detail="Abonament inactiv. Alege un plan.")
-        check_analysis_quota(firebase_uid, sub["plan"])
-    else:
-        require_api_key(x_api_key)
 
     # ── No cache — fetch premium data ──
     premium_raw = get_api_sports_data(data.sport, data.home_team, data.match_date)
@@ -1247,7 +1272,7 @@ async def analyze(
 
         # Track usage for Firebase-authenticated users
         if firebase_uid:
-            _increment_usage(firebase_uid, "analyses_count")
+            _increment_unique_analysis(firebase_uid, seif_key)
 
         return {"analysis": parsed_json}
         
@@ -1290,55 +1315,40 @@ async def analyze_custom_ticket(
         cur.execute("SELECT analysis_json FROM saved_analyses WHERE match_key LIKE ? ORDER BY saved_at DESC LIMIT 1", (f"%{kw}%",))
         row = cur.fetchone()
         
-        analysis_context = " (Fără date premium. Bazează-te pe experiența ta.)"
+        analysis_context = ""
         if row:
             try:
                 ans = json.loads(row[0])
-                text_full = ans.get('section1_analysis', '')
                 main_bet = ans.get('section2_bets', {}).get('main_bet', {})
-                bet_recomandat = f"Recomandare Sistem AI: {main_bet.get('market')} - {main_bet.get('pick')} (Cotă: {main_bet.get('fair_odds')})"
-                
-                analysis_context = f"\n   | DATE PREMIUM: {text_full}\n   | {bet_recomandat}"
+                secondary = ans.get('section2_bets', {}).get('secondary_bets', [])
+                sec_summary = "; ".join(f"{s.get('market')}-{s.get('pick')}(p={s.get('model_probability')}%)" for s in secondary[:2]) if secondary else ""
+                analysis_context = f"\n  AI: {main_bet.get('market')}-{main_bet.get('pick')}(p={main_bet.get('model_probability')}%,fair={main_bet.get('fair_odds')})"
+                if sec_summary:
+                    analysis_context += f" | Alt: {sec_summary}"
             except:
                 pass
 
-        enriched_picks.append(f"MECI: {p.match} ({p.league})\nJUCĂTORUL A PARIAT: {p.pick}{analysis_context}\n")
+        enriched_picks.append(f"{p.match} ({p.league}) | Pariu: {p.pick}{analysis_context}")
     
     conn.close()
     ticket_details = "\n".join(enriched_picks)
 
-    system_prompt = """Ești un Risk Manager profesionist în pariuri sportive. 
-    Rolul tău este să validezi biletul utilizatorului. 
-    Ai la dispoziție DATELE PREMIUM (analiza text și recomandarea sistemului) pentru meciurile jucate.
-    
-    REGULI DE AUR:
-    1. Asumă-ți OBLIGATORIU că datele premium atașate sunt 100% pentru meciul respectiv. NU afirma niciodată că 'analiza nu corespunde meciului'.
-    2. Compară ce a pariat utilizatorul (JUCĂTORUL A PARIAT) cu DATELE PREMIUM. Dacă pariul utilizatorului are logică matematică și e susținut de textul analizei (ex: el a pus GG, iar analiza zice că ambele iau/dau goluri), validează-l ca fiind EXCELENT!
-    3. Nu căuta nod în papură! Dacă biletul e bun, lasă lista 'weak_links' GOALĂ [] și dă-i o notă mare (8-10).
-    4. Penalizează ('weak_links') DOAR dacă utilizatorul a pariat complet invers față de analiza premium (ex: pune 1 Solist, deși analiza zice că oaspeții domină).
+    system_prompt = """Ești Risk Manager pariuri sportive. Validezi biletul utilizatorului comparând pariurile lui cu recomandările AI atașate (market, pick, probabilitate).
+REGULI:
+1. Datele AI atașate sunt 100% corecte pentru meciul respectiv.
+2. Dacă pariul utilizatorului se aliniază cu recomandarea AI (sau e logic), validează-l.
+3. Penalizează în weak_links DOAR dacă pariul e complet invers față de AI.
+4. Dacă biletul e bun, weak_links = [] și confidence_score mare (8-10).
+Răspunde EXCLUSIV JSON valid:
+{"general_verdict":"string","weak_links":[{"match":"string","reason":"string"}],"confidence_score":number(1-10)}"""
 
-    OBLIGATORIU: Trebuie să returnezi răspunsul EXCLUSIV sub formă de JSON valid, cu EXACT următoarea structură:
-    {
-        "general_verdict": "Concluzia ta (aprobă biletul dacă e bun, nu fi paranoic)",
-        "weak_links": [
-            {
-                "match": "Echipa X vs Echipa Y",
-                "reason": "Explicația clară de ce e periculos"
-            }
-        ],
-        "confidence_score": 0
-    }
-    (Nota: confidence_score trebuie să fie un număr de la 1 la 10 bazat pe potrivirea dintre pariurile jucătorului și datele premium)."""
-
-    user_input = f"""
-    Te rog să verifici următorul bilet:
-    {ticket_details}
-    """
+    user_input = f"Verifică biletul:\n{ticket_details}"
 
     try:
         response = client.chat.completions.create(
-            model=MODEL,
-            temperature=0, 
+            model=RISK_MODEL,
+            temperature=0,
+            max_tokens=500,
             response_format={ "type": "json_object" },
             messages=[
                 {"role": "system", "content": system_prompt},

@@ -1,30 +1,30 @@
 {
   "ticket": [
     {
-      "match": "Rayo Vallecano vs Real Oviedo",
-      "league": "La Liga",
-      "market": "1X2",
-      "pick": "Rayo Vallecano",
-      "odds": "1.7",
-      "reasoning": "Rayo Vallecano are o cotă favorabilă și joacă acasă, ceea ce le oferă un avantaj semnificativ împotriva unei echipe mai slabe precum Real Oviedo."
+      "match": "Bologna vs AS Roma",
+      "league": "UEFA Europa League",
+      "market": "Under 2.5 Goals",
+      "pick": "Under 2.5",
+      "odds": "1.78",
+      "reasoning": "Bologna are o apărare solidă, primind doar 0.7 goluri pe meci, iar AS Roma are absențe importante. Meciul se anunță a fi unul strâns, cu puține goluri."
     },
     {
-      "match": "Aston Villa vs Chelsea",
-      "league": "Premier League",
-      "market": "Over/Under",
-      "pick": "Over 2.5",
-      "odds": "1.75",
-      "reasoning": "Ambele echipe au o forță ofensivă considerabilă și tind să participe la meciuri cu multe goluri. Cota pentru peste 2.5 goluri este atractivă și se încadrează în intervalul nostru țintă."
+      "match": "Lille vs Aston Villa",
+      "league": "UEFA Europa League",
+      "market": "Both Teams to Score",
+      "pick": "Yes",
+      "odds": "1.89",
+      "reasoning": "Aston Villa are o formă ofensivă bună, marcând 1.8 goluri pe meci, iar Lille, deși oscilantă, are capacitatea de a marca acasă. Ambele echipe sunt capabile să înscrie."
     },
     {
-      "match": "Fulham vs West Ham United",
-      "league": "Premier League",
+      "match": "AZ Alkmaar vs Sparta Prague",
+      "league": "UEFA Europa League",
       "market": "1X2",
-      "pick": "Fulham",
-      "odds": "2.14",
-      "reasoning": "Fulham joacă acasă și are o cotă bună pentru victorie. West Ham nu a avut cele mai bune rezultate în deplasare, ceea ce face ca acest pariu să aibă valoare."
+      "pick": "AZ Alkmaar",
+      "odds": "1.94",
+      "reasoning": "AZ Alkmaar joacă acasă și are o cotă favorabilă pentru victorie. Sparta Prague are o cotă mare pentru victorie, indicând o probabilitate mai mică de succes."
     }
   ],
-  "total_odds": 6.37,
-  "date": "04.03.2026"
+  "total_odds": 6.53,
+  "date": "12.03.2026"
 }

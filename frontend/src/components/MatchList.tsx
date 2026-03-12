@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { Fixture } from "@/lib/types";
 import { fmtTime } from "@/lib/utils";
 
@@ -26,6 +27,8 @@ function getDisplayStatus(fixture: Fixture): { label: string; type: "live" | "fi
 }
 
 export default function MatchList({ fixtures, selectedMatchId, onSelectMatch }: MatchListProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+
   if (!fixtures.length) {
     return (
       <div className="p-8 text-center text-text-muted text-xs">
@@ -34,8 +37,32 @@ export default function MatchList({ fixtures, selectedMatchId, onSelectMatch }: 
     );
   }
 
+  const scrollUp = () => {
+    listRef.current?.scrollBy({ top: -300, behavior: "smooth" });
+  };
+  const scrollDown = () => {
+    listRef.current?.scrollBy({ top: 300, behavior: "smooth" });
+  };
+
   return (
-    <div className="overflow-y-auto flex-1 custom-scroll p-2 flex flex-col gap-1">
+    <div className="flex flex-col flex-1 min-h-0 relative">
+      {/* Scroll up button */}
+      <button
+        onClick={scrollUp}
+        className="sticky top-0 z-10 w-full py-1 bg-[#0d1117]/90 backdrop-blur-sm border-b border-white/[0.06] text-text-muted hover:text-primary transition flex items-center justify-center gap-1"
+        aria-label="Scroll sus"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="18 15 12 9 6 15" />
+        </svg>
+        <span className="text-[10px] font-medium uppercase tracking-wider">Sus</span>
+      </button>
+
+      <div
+        ref={listRef}
+        className="overflow-y-auto flex-1 min-h-0 custom-scroll p-2 flex flex-col gap-1"
+        style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
+      >
       {fixtures.map((m) => {
         const display = getDisplayStatus(m);
         const isSelected = selectedMatchId === m.id;
@@ -76,6 +103,19 @@ export default function MatchList({ fixtures, selectedMatchId, onSelectMatch }: 
           </div>
         );
       })}
+      </div>
+
+      {/* Scroll down button */}
+      <button
+        onClick={scrollDown}
+        className="sticky bottom-0 z-10 w-full py-1 bg-[#0d1117]/90 backdrop-blur-sm border-t border-white/[0.06] text-text-muted hover:text-primary transition flex items-center justify-center gap-1"
+        aria-label="Scroll jos"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+        <span className="text-[10px] font-medium uppercase tracking-wider">Jos</span>
+      </button>
     </div>
   );
 }

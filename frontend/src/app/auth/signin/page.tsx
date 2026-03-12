@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import { Suspense } from "react";
 import { GoogleReCaptchaProvider, useGoogleReCaptcha } from "react-google-recaptcha-v3";
@@ -21,6 +23,8 @@ function SignInForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +62,33 @@ function SignInForm() {
         setError("Prea multe încercări. Încearcă din nou mai târziu.");
       } else {
         setError("Eroare la autentificare. Încearcă din nou.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (!email) {
+      setError("Introdu adresa de email.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("auth/user-not-found")) {
+        setError("Nu există un cont cu acest email.");
+      } else if (msg.includes("auth/too-many-requests")) {
+        setError("Prea multe încercări. Încearcă din nou mai târziu.");
+      } else if (msg.includes("auth/invalid-email")) {
+        setError("Adresa de email nu este validă.");
+      } else {
+        setError("Eroare la trimiterea emailului. Încearcă din nou.");
       }
     } finally {
       setLoading(false);
@@ -125,6 +156,68 @@ function SignInForm() {
 
         {/* Card */}
         <div className="card p-8">
+          {resetMode ? (
+            // ── Password Reset Mode ──
+            <>
+              <h1 className="text-2xl font-bold text-white mb-2">Resetare parolă</h1>
+              <p className="text-text-secondary mb-6">Introdu emailul și îți vom trimite un link de resetare.</p>
+
+              {error && (
+                <div className="mb-4 p-3 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm">
+                  {error}
+                </div>
+              )}
+
+              {resetSent ? (
+                <div className="mb-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
+                  <p className="font-medium mb-1">Email trimis cu succes!</p>
+                  <p>Verifică inbox-ul (și folder-ul spam) pentru linkul de resetare a parolei.</p>
+                </div>
+              ) : (
+                <form onSubmit={handlePasswordReset} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1.5">Email</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className="input-field w-full"
+                      placeholder="email@exemplu.com"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="btn btn-primary w-full py-3 text-base font-semibold disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Se trimite...
+                      </span>
+                    ) : (
+                      "Trimite link de resetare"
+                    )}
+                  </button>
+                </form>
+              )}
+
+              <p className="mt-6 text-center text-sm text-text-secondary">
+                <button
+                  onClick={() => { setResetMode(false); setResetSent(false); setError(""); }}
+                  className="text-primary hover:text-primary-hover font-medium"
+                >
+                  Înapoi la autentificare
+                </button>
+              </p>
+            </>
+          ) : (
+            // ── Sign In Mode ──
+            <>
           <h1 className="text-2xl font-bold text-white mb-2">Bine ai revenit</h1>
           <p className="text-text-secondary mb-6">Autentifică-te pentru a accesa platforma.</p>
 
@@ -181,7 +274,16 @@ function SignInForm() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Parolă</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-text-secondary">Parolă</label>
+                <button
+                  type="button"
+                  onClick={() => { setResetMode(true); setError(""); }}
+                  className="text-xs text-primary hover:text-primary-hover font-medium"
+                >
+                  Ai uitat parola?
+                </button>
+              </div>
               <input
                 type="password"
                 value={password}
@@ -220,6 +322,8 @@ function SignInForm() {
               Creează cont
             </Link>
           </p>
+            </>
+          )}
         </div>
       </div>
     </div>

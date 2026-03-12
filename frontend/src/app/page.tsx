@@ -527,9 +527,9 @@ export default function LandingPage() {
           </div>
           <div className="lp-footer-col">
             <h4>Legal</h4>
-            <a href="#">Politica de Confidențialitate</a>
-            <a href="#">Termeni și Condiții</a>
-            <a href="#">Joc Responsabil</a>
+            <Link href="/confidentialitate">Politica de Confidențialitate</Link>
+            <Link href="/termeni">Termeni și Condiții</Link>
+            <Link href="/joc-responsabil">Joc Responsabil</Link>
           </div>
         </div>
         <div className="lp-container lp-footer-bottom">

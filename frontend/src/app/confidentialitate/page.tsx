@@ -42,8 +42,8 @@ export default function ConfidentialitatePage() {
               <p>Operatorul de date cu caracter personal este:</p>
               <ul className="list-none space-y-1 mt-2">
                 <li><strong className="text-white">Denumire:</strong> GG-AI SRL</li>
-                <li><strong className="text-white">Email contact:</strong> contact@gg-ai.ro</li>
-                <li><strong className="text-white">Responsabil protecția datelor (DPO):</strong> contact@gg-ai.ro</li>
+                <li><strong className="text-white">Email contact:</strong> contact@ggai.bet</li>
+                <li><strong className="text-white">Responsabil protecția datelor (DPO):</strong> contact@ggai.bet</li>
               </ul>
             </section>
 
@@ -182,7 +182,7 @@ export default function ConfidentialitatePage() {
                 <li><strong className="text-white">Dreptul de a retrage consimțământul</strong> — oricând, fără a afecta legalitatea prelucrării anterioare.</li>
               </ul>
               <p className="mt-3">
-                Pentru exercitarea acestor drepturi, contactați-ne la <strong className="text-white">contact@gg-ai.ro</strong>.
+                Pentru exercitarea acestor drepturi, contactați-ne la <strong className="text-white">contact@ggai.bet</strong>.
                 Vom răspunde în termen de 30 de zile calendaristice.
               </p>
             </section>
@@ -250,8 +250,8 @@ export default function ConfidentialitatePage() {
                 Pentru orice întrebări sau solicitări legate de protecția datelor personale:
               </p>
               <ul className="list-none space-y-1 mt-2">
-                <li>📧 Email general: contact@gg-ai.ro</li>
-                <li>🔒 Responsabil protecția datelor: contact@gg-ai.ro</li>
+                <li>📧 Email general: contact@ggai.bet</li>
+                <li>🔒 Responsabil protecția datelor: contact@ggai.bet</li>
               </ul>
             </section>
           </div>

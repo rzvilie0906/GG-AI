@@ -81,11 +81,11 @@ export async function loadSports(): Promise<string[]> {
 export async function loadDefaultDate(): Promise<string> {
   try {
     const r = await fetch(`${API_BASE}/dates`, { cache: "no-store" });
-    if (!r.ok) return new Date().toISOString().slice(0, 10);
+    if (!r.ok) return new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Bucharest" })).toISOString().slice(0, 10);
     const data = await r.json();
     return data.default;
   } catch {
-    return new Date().toISOString().slice(0, 10);
+    return new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Bucharest" })).toISOString().slice(0, 10);
   }
 }
 
@@ -136,24 +136,10 @@ export async function analyzeMatch(
   startTimeUtc?: string
 ): Promise<AnalysisResult> {
   // Check frontend in-memory cache first (instant, no network)
+  // Cache is used only to avoid flickering on re-renders — backend handles quota dedup
   const cacheKey = `${sport}_${homeTeam}_${awayTeam}_${matchDate}`.replace(/ /g, "_").toLowerCase();
-  const cached = _analysisCache.get(cacheKey);
-  if (cached) return cached;
 
-  // Check backend cache (lightweight, no auth, no AI — instant if saved)
-  try {
-    const cacheUrl = `${API_BASE}/analyze-cached?sport=${encodeURIComponent(sport)}&home_team=${encodeURIComponent(homeTeam)}&away_team=${encodeURIComponent(awayTeam)}&match_date=${encodeURIComponent(matchDate)}`;
-    const cr = await fetch(cacheUrl, { cache: "no-store" });
-    if (cr.ok) {
-      const cd = await cr.json();
-      if (cd.cached && cd.analysis) {
-        _analysisCache.set(cacheKey, cd.analysis);
-        return cd.analysis;
-      }
-    }
-  } catch {}
-
-  // No cache — full analyze with auth + AI generation
+  // Full analyze with auth + quota tracking (cached or AI-generated)
   const payload = {
     sport,
     league: leagueName,

@@ -131,6 +131,20 @@ export default function Topbar({ apiOnline, lastRefresh, isRefreshing, onRefresh
                         </svg>
                         Upgrade plan
                       </button>
+                      <button
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          router.push("/suport");
+                        }}
+                        className="w-full px-4 py-2.5 text-sm text-text-secondary hover:text-white hover:bg-white/5 text-left flex items-center gap-3 transition"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                          <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                        Suport
+                      </button>
                     </div>
 
                     {/* Sign out */}
