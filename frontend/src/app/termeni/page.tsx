@@ -29,7 +29,7 @@ export default function TermeniPage() {
               <h2 className="text-lg font-semibold text-white mb-3">1. Informații generale</h2>
               <p>
                 Prezentul document stabilește termenii și condițiile de utilizare a platformei GG-AI
-                (denumită în continuare &quot;Platforma&quot;), operată de GG-AI SRL (denumită în continuare
+                (denumită în continuare &quot;Platforma&quot;), operată de RAILIE SRL (denumită în continuare
                 &quot;Operatorul&quot;). Prin accesarea și utilizarea Platformei, utilizatorul confirmă că a citit,
                 a înțeles și este de acord cu acești termeni și condiții în totalitate.
               </p>
