@@ -47,13 +47,13 @@ def _upload_ticket_to_firestore(cat_name: str, data: dict):
     db.collection("daily_tickets").document(cat_name).set(data)
     print(f"[OK] Bilet {cat_name} uploadat în Firestore.")
 
-def save_empty(cat_name: str, today_display: str):
+def save_empty(cat_name: str, today_display: str, reason: str = "Niciun meci disponibil pentru această categorie."):
     """Salvează un bilet gol când nu sunt meciuri disponibile."""
-    data = {"ticket": [], "total_odds": 0, "date": today_display, "message": "Niciun meci disponibil pentru această categorie."}
+    data = {"ticket": [], "total_odds": 0, "date": today_display, "message": reason}
     with open(f"daily_ticket_{cat_name}.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     _upload_ticket_to_firestore(cat_name, data)
-    print(f"[INFO] Bilet {cat_name} gol salvat — niciun meci disponibil.")
+    print(f"[INFO] Bilet {cat_name} gol salvat — {reason}")
 
 async def generate_all_tickets():
     conn = sqlite3.connect("sports.db")
@@ -164,11 +164,13 @@ async def generate_all_tickets():
             print(f"  [MIXED] Distribuție: {', '.join(f'{s}={len(ms)}' for s, ms in by_sport.items())}")
 
         if not matches:
-            save_empty(cat_name, today_display)
+            print(f"[WARN] SQL query returned 0 matches for {cat_name} (now_utc={now_utc}, us_window={us_start}->{us_end}, eur_window={eur_start}->{eur_end})")
+            save_empty(cat_name, today_display, "Niciun meci disponibil pentru această categorie.")
             continue
 
-        print(f"[INFO] Analizez premium {len(matches[:10])} meciuri pentru {cat_name}...")
+        print(f"[INFO] Găsite {len(matches)} meciuri pentru {cat_name}. Analizez premium primele {min(len(matches), 10)}...")
 
+        analyze_ok = 0
         for m in matches[:10]: 
             try:
                 await analyze(AnalyzeRequest(
@@ -178,9 +180,17 @@ async def generate_all_tickets():
                     match_date=azi_str,
                     league=m["league_name"]
                 ), x_api_key=os.environ.get("APP_API_KEY", ""))
+                analyze_ok += 1
                 await asyncio.sleep(1) 
-            except:
+            except Exception as ae:
+                print(f"[WARN] Analiza eșuată pentru {m['home_team']} vs {m['away_team']}: {ae}")
                 continue
+        print(f"[INFO] Analize reușite: {analyze_ok}/{min(len(matches), 10)} pentru {cat_name}")
+        
+        # Pauză între faza de analiză și generarea biletului pentru a evita rate limits
+        if analyze_ok > 0:
+            print("⏳ Pauză 10s între analize și generarea biletului...")
+            await asyncio.sleep(10)
 
         prompt_data = []
         for m in matches[:15]:
@@ -278,31 +288,43 @@ async def generate_all_tickets():
         
         try:
             result_data = None
-            for attempt in range(2):  # Retry once if GPT returns too few picks
-                response = client.chat.completions.create(
-                    model="gpt-4o",
-                    temperature=0.3 if attempt > 0 else 0,  # Increase creativity on retry
-                    response_format={ "type": "json_object" },
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": json.dumps(prompt_data, ensure_ascii=False)}
-                    ]
-                )
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    response = client.chat.completions.create(
+                        model="gpt-4o",
+                        temperature=0.3 if attempt > 0 else 0,
+                        response_format={ "type": "json_object" },
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": json.dumps(prompt_data, ensure_ascii=False)}
+                        ]
+                    )
+                    
+                    result_data = json.loads(response.choices[0].message.content)
+                    picks = result_data.get('ticket', [])
+                    
+                    if len(picks) >= 2:
+                        break  # Good enough
+                    print(f"[WARN] Încercarea {attempt+1}/{max_attempts}: GPT a returnat doar {len(picks)} meciuri pentru {cat_name}.")
+                except Exception as gpt_err:
+                    print(f"[WARN] Încercarea {attempt+1}/{max_attempts} GPT eșuată pentru {cat_name}: {type(gpt_err).__name__}: {gpt_err}")
                 
-                result_data = json.loads(response.choices[0].message.content)
-                picks = result_data.get('ticket', [])
-                
-                if len(picks) >= 2:
-                    break  # Good enough
-                print(f"[WARN] Încercarea {attempt+1}: GPT a returnat doar {len(picks)} meciuri pentru {cat_name}. {'Reîncerc...' if attempt == 0 else 'Salvez ce am.'}")
-                if attempt == 0:
-                    await asyncio.sleep(3)
+                if attempt < max_attempts - 1:
+                    wait_time = 30 * (attempt + 1)  # 30s, 60s
+                    print(f"⏳ Aștept {wait_time}s înainte de reîncercare...")
+                    time.sleep(wait_time)
 
             # Enforce 2-4 picks per ticket
+            if result_data is None:
+                print(f"[ERR] Bilet {cat_name}: toate cele {max_attempts} încercări GPT au eșuat.")
+                save_empty(cat_name, today_display, "Eroare temporară la generare. Revino mai târziu.")
+                continue
+                
             picks = result_data.get('ticket', [])
             if len(picks) < 2:
-                print(f"[WARN] Bilet {cat_name} are doar {len(picks)} meciuri — prea puține, skip.")
-                save_empty(cat_name, today_display)
+                print(f"[WARN] Bilet {cat_name} are doar {len(picks)} meciuri după {max_attempts} încercări — prea puține.")
+                save_empty(cat_name, today_display, "Insuficiente meciuri cu valoare identificate.")
                 continue
             if len(picks) > 4:
                 print(f"[WARN] Bilet {cat_name} are {len(picks)} meciuri — trunchiem la 4.")
@@ -321,12 +343,14 @@ async def generate_all_tickets():
             _upload_ticket_to_firestore(cat_name, result_data)
             
             print(f"[OK] Bilet {cat_name} salvat. Cota: {result_data['total_odds']}")
-            print("⏳ Aștept 65 de secunde pentru resetarea limitei OpenAI...")
-            time.sleep(65)
+            print("⏳ Aștept 90 de secunde pentru resetarea limitei OpenAI...")
+            time.sleep(90)
 
         except Exception as e:
-            print(f"[ERR] {cat_name}: {e}")
-            save_empty(cat_name, today_display)
+            print(f"[ERR] {cat_name} — excepție neașteptată: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            save_empty(cat_name, today_display, "Eroare temporară la generare. Revino mai târziu.")
 
     conn.close()
 

@@ -28,7 +28,7 @@ export default function ConfidentialitatePage() {
             <section>
               <h2 className="text-lg font-semibold text-white mb-3">1. Introducere</h2>
               <p>
-                GG-AI SRL (denumit în continuare &quot;Operatorul&quot;, &quot;noi&quot;) se angajează să
+                RAILIE SRL (denumit în continuare &quot;Operatorul&quot;, &quot;noi&quot;) se angajează să
                 protejeze confidențialitatea și datele personale ale utilizatorilor săi. Această
                 politică de confidențialitate descrie modul în care colectăm, utilizăm, stocăm și
                 protejăm datele dumneavoastră personale, în conformitate cu Regulamentul (UE)
@@ -41,7 +41,7 @@ export default function ConfidentialitatePage() {
               <h2 className="text-lg font-semibold text-white mb-3">2. Operator de date</h2>
               <p>Operatorul de date cu caracter personal este:</p>
               <ul className="list-none space-y-1 mt-2">
-                <li><strong className="text-white">Denumire:</strong> GG-AI SRL</li>
+                <li><strong className="text-white">Denumire:</strong> RAILIE SRL</li>
                 <li><strong className="text-white">Email contact:</strong> contact@ggai.bet</li>
                 <li><strong className="text-white">Responsabil protecția datelor (DPO):</strong> contact@ggai.bet</li>
               </ul>
