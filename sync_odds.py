@@ -50,8 +50,10 @@ def get_live_tennis_sports(api_key):
     return []
 
 def init_db():
-    conn = sqlite3.connect("sports.db")
+    conn = sqlite3.connect("sports.db", timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
     cur = conn.cursor()
+    cur.execute("DROP TABLE IF EXISTS match_odds")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS match_odds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +65,6 @@ def init_db():
             updated_at TEXT
         )
     """)
-    cur.execute("DELETE FROM match_odds")
     conn.commit()
     return conn
 

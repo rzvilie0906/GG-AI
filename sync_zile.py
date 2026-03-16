@@ -28,7 +28,8 @@ SPORT_LEAGUES = {
 def norm(s): return " ".join((s or "").strip().lower().split())
 
 def sync_urmatoarele_7_zile():
-    conn = sqlite3.connect("sports.db")
+    conn = sqlite3.connect("sports.db", timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
     cur = conn.cursor()
     
     cur.execute("""
