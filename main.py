@@ -134,8 +134,10 @@ def get_exact_stats(response_data, team_id, sport):
         away = g.get("teams", {}).get("away", {})
         scores = g.get("scores", {}) or g.get("goals", {})
         
-        h_score = scores.get("home") if isinstance(scores.get("home"), int) else scores.get("home", {}).get("total")
-        a_score = scores.get("away") if isinstance(scores.get("away"), int) else scores.get("away", {}).get("total")
+        h_raw = scores.get("home")
+        a_raw = scores.get("away")
+        h_score = h_raw if isinstance(h_raw, int) else (h_raw.get("total") if isinstance(h_raw, dict) else None)
+        a_score = a_raw if isinstance(a_raw, int) else (a_raw.get("total") if isinstance(a_raw, dict) else None)
 
         if h_score is None or a_score is None: continue
 
@@ -167,8 +169,10 @@ def calculate_exact_metrics(fixtures, team_id):
         goals = f.get("goals") or f.get("scores")
         if not goals: continue
         
-        h_g = goals.get("home") if isinstance(goals.get("home"), int) else goals.get("home", {}).get("total")
-        a_g = goals.get("away") if isinstance(goals.get("away"), int) else goals.get("away", {}).get("total")
+        h_raw = goals.get("home")
+        a_raw = goals.get("away")
+        h_g = h_raw if isinstance(h_raw, int) else (h_raw.get("total") if isinstance(h_raw, dict) else None)
+        a_g = a_raw if isinstance(a_raw, int) else (a_raw.get("total") if isinstance(a_raw, dict) else None)
 
         if h_g is None or a_g is None: continue
         if h_g == a_g: d += 1
@@ -234,8 +238,9 @@ def get_auth_token(x_app_secret: str = Header(..., alias="X-App-Secret")):
     return _generate_token()
 
 def _db_connect():
-    conn = sqlite3.connect("sports.db")
+    conn = sqlite3.connect("sports.db", timeout=15)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 def _init_db():
@@ -250,10 +255,13 @@ def _init_db():
     """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS match_odds (
-            match_title TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            league_key TEXT,
             sport_key TEXT,
+            match_title TEXT,
+            start_time TEXT,
             bookmakers_json TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT
         )
     """)
     cur.execute("""
@@ -266,25 +274,92 @@ def _init_db():
     conn.commit()
     conn.close()
 
+
+def _bootstrap_from_firestore():
+    """If local sports.db is empty, download events/odds from Firestore."""
+    conn = _db_connect()
+    event_count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+    if event_count > 0:
+        conn.close()
+        return  # Already have data
+
+    print("📥 [BOOTSTRAP] sports.db is empty — downloading from Firestore...")
+    try:
+        import firebase_admin as _fb
+        from firebase_admin import credentials as _creds, firestore as _fs
+        cred_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_KEY", "firebase-service-account.json")
+        if not _fb._apps:
+            if os.path.exists(cred_path):
+                _fb.initialize_app(_creds.Certificate(cred_path))
+            else:
+                print("⚠️ [BOOTSTRAP] No Firebase credentials — skipping.")
+                conn.close()
+                return
+        db_fs = _fs.client()
+
+        # Download events
+        total_events = 0
+        for doc in db_fs.collection("sync_events").stream():
+            data = doc.to_dict()
+            for ev in data.get("events", []):
+                conn.execute("""
+                    INSERT OR REPLACE INTO events
+                    (id, sport, league_key, league_name, start_time_utc, status, home_team, away_team, provider, provider_event_id, search_text)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (ev.get("id"), ev.get("sport"), ev.get("league_key"), ev.get("league_name"),
+                      ev.get("start_time_utc"), ev.get("status"), ev.get("home_team"), ev.get("away_team"),
+                      ev.get("provider"), ev.get("provider_event_id"), ev.get("search_text")))
+                total_events += 1
+
+        # Download odds
+        total_odds = 0
+        for doc in db_fs.collection("sync_odds").stream():
+            data = doc.to_dict()
+            for od in data.get("odds", []):
+                conn.execute("""
+                    INSERT OR REPLACE INTO match_odds (league_key, sport_key, match_title, start_time, bookmakers_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (od.get("league_key"), od.get("sport_key"), od.get("match_title"),
+                      od.get("start_time"), od.get("bookmakers_json"),
+                      od.get("updated_at")))
+                total_odds += 1
+
+        conn.commit()
+        print(f"✅ [BOOTSTRAP] Loaded {total_events} events + {total_odds} odds from Firestore.")
+    except Exception as e:
+        print(f"⚠️ [BOOTSTRAP] Firestore download failed: {e}")
+    finally:
+        conn.close()
+
 async def auto_sync_worker():
+    """Sync events (ESPN, free) every 6h. Odds are synced by the Daily Sync workflow once/day to conserve API keys."""
+    first_run = True
     while True:
-        await asyncio.sleep(86400) 
-        
-        print("\n🔄 [AUTOPILOT] Actualizez calendarul și cotele pe silențios...")
+        print("\n🔄 [AUTOPILOT] Actualizez calendarul meciurilor (ESPN)...")
         try:
-            proc1 = await asyncio.create_subprocess_exec('python', 'sync_zile.py')
-            await proc1.communicate() 
-            
-            proc2 = await asyncio.create_subprocess_exec('python', 'sync_odds.py')
-            await proc2.communicate() 
-            
-            print("✅ [AUTOPILOT] Actualizare terminată cu succes!")
+            proc1 = await asyncio.create_subprocess_exec(sys.executable, 'sync_zile.py')
+            await proc1.communicate()
+            print("✅ [AUTOPILOT] Calendar meciuri actualizat!")
         except Exception as e:
-            print(f"❌ [AUTOPILOT] Eroare în fundal: {e}")
+            print(f"❌ [AUTOPILOT] Eroare sync_zile: {e}")
+
+        # Sync odds only on first startup (fresh data); daily refresh handled by GitHub Actions
+        if first_run:
+            print("🔄 [AUTOPILOT] Prima rulare — sincronizez și cotele...")
+            try:
+                proc2 = await asyncio.create_subprocess_exec(sys.executable, 'sync_odds.py')
+                await proc2.communicate()
+                print("✅ [AUTOPILOT] Cote actualizate!")
+            except Exception as e:
+                print(f"❌ [AUTOPILOT] Eroare sync_odds: {e}")
+            first_run = False
+
+        await asyncio.sleep(21600)  # Repeat events sync every 6 hours
 
 @app.on_event("startup")
 def _startup():
     _init_db()
+    _bootstrap_from_firestore()
     init_users_db()
     asyncio.create_task(auto_sync_worker())
 
@@ -310,6 +385,7 @@ def _fix_probabilities(parsed: dict, odds_str: str) -> dict:
     Post-procesare: recalculează fair_odds din model_probability și 
     detectează dacă GPT a pus valori statice identice.
     Dacă fair_odds nu se potrivește cu 100/model_probability, îl corectează.
+    Also enriches section3_odds with real bookmaker data when GPT returned N/A.
     """
     import random
     
@@ -354,8 +430,80 @@ def _fix_probabilities(parsed: dict, odds_str: str) -> dict:
     except Exception as e:
         print(f"⚠️ [FIX_PROB] Eroare la post-procesare: {e}")
     
+    # Enrich section3_odds with real bookmaker data from odds_str
+    try:
+        if odds_str and not odds_str.startswith("COTE_LIPSĂ"):
+            bookmakers = json.loads(odds_str) if isinstance(odds_str, str) else odds_str
+            if isinstance(bookmakers, list) and bookmakers:
+                # Build a lookup: market_key -> list of {bookmaker, outcome, odds}
+                market_data = {}
+                for bookie in bookmakers:
+                    bookie_name = bookie.get("title", bookie.get("key", "Unknown"))
+                    for mkt in bookie.get("markets", []):
+                        mkt_key = mkt.get("key", "")
+                        if mkt_key not in market_data:
+                            market_data[mkt_key] = {}
+                        for outcome in mkt.get("outcomes", []):
+                            out_name = outcome.get("name", "")
+                            point = outcome.get("point")
+                            pick_label = f"{out_name} {point}" if point is not None else out_name
+                            if pick_label not in market_data[mkt_key]:
+                                market_data[mkt_key][pick_label] = []
+                            market_data[mkt_key][pick_label].append({
+                                "bookmaker": bookie_name,
+                                "odds": outcome.get("price", 0)
+                            })
+
+                section3 = parsed.get("section3_odds", [])
+                if isinstance(section3, list):
+                    for entry in section3:
+                        if not isinstance(entry, dict):
+                            continue
+                        # Skip if already has valid odds_range
+                        if entry.get("odds_range") and isinstance(entry["odds_range"], dict) and entry["odds_range"].get("min"):
+                            continue
+                        
+                        pick = (entry.get("pick") or "").strip()
+                        market = (entry.get("market") or "").strip().lower()
+                        
+                        # Try to find matching market data
+                        best_quotes = None
+                        for mkt_key, picks_dict in market_data.items():
+                            # Match market key loosely
+                            mkt_matches = (
+                                ("h2h" in mkt_key and any(k in market for k in ["1x2", "victorie", "winner", "moneyline", "câștigătoare"])) or
+                                ("totals" in mkt_key and any(k in market for k in ["total", "peste", "sub", "over", "under"])) or
+                                ("spreads" in mkt_key and any(k in market for k in ["handicap", "spread"]))
+                            )
+                            if not mkt_matches:
+                                continue
+                            # Find the pick within this market
+                            for pick_label, quotes in picks_dict.items():
+                                if pick.lower() in pick_label.lower() or pick_label.lower() in pick.lower():
+                                    best_quotes = quotes
+                                    break
+                            # Also try partial match
+                            if not best_quotes:
+                                for pick_label, quotes in picks_dict.items():
+                                    pick_words = pick.lower().split()
+                                    if any(w in pick_label.lower() for w in pick_words if len(w) > 2):
+                                        best_quotes = quotes
+                                        break
+                            if best_quotes:
+                                break
+                        
+                        if best_quotes:
+                            odds_values = [q["odds"] for q in best_quotes if isinstance(q["odds"], (int, float)) and q["odds"] > 0]
+                            if odds_values:
+                                entry["odds_range"] = {"min": round(min(odds_values), 2), "max": round(max(odds_values), 2)}
+                                entry["bookmaker_quotes"] = [{"bookmaker": q["bookmaker"], "odds": str(round(q["odds"], 2))} for q in best_quotes[:5]]
+                                print(f"🔧 [FIX_ODDS] Enriched {entry.get('market')}: range {entry['odds_range']}")
+                    
+                    parsed["section3_odds"] = section3
+    except Exception as e:
+        print(f"⚠️ [FIX_ODDS] Eroare la enrichment section3: {e}")
+    
     return parsed
-    return "upcoming"
 
 def get_real_live_data(sport: str, event_id: str, league_key: str, home_team: str, away_team: str) -> str:
     import urllib.parse

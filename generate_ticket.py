@@ -56,7 +56,8 @@ def save_empty(cat_name: str, today_display: str, reason: str = "Niciun meci dis
     print(f"[INFO] Bilet {cat_name} gol salvat — {reason}")
 
 async def generate_all_tickets():
-    conn = sqlite3.connect("sports.db")
+    conn = sqlite3.connect("sports.db", timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
@@ -70,10 +71,13 @@ async def generate_all_tickets():
     """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS match_odds (
-            match_title TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            league_key TEXT,
             sport_key TEXT,
+            match_title TEXT,
+            start_time TEXT,
             bookmakers_json TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT
         )
     """)
     cur.execute("""
