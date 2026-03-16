@@ -22,15 +22,27 @@ export default function TermeniPage() {
 
         <div className="card p-8 md:p-12">
           <h1 className="text-3xl font-bold text-white mb-2">Termeni și Condiții</h1>
-          <p className="text-text-muted text-sm mb-8">Ultima actualizare: 6 martie 2026</p>
+          <p className="text-text-muted text-sm mb-8">Ultima actualizare: 16 martie 2026</p>
 
           <div className="prose prose-invert max-w-none space-y-6 text-text-secondary text-sm leading-relaxed">
             <section>
               <h2 className="text-lg font-semibold text-white mb-3">1. Informații generale</h2>
               <p>
                 Prezentul document stabilește termenii și condițiile de utilizare a platformei GG-AI
-                (denumită în continuare &quot;Platforma&quot;), operată de RAILIE SRL (denumită în continuare
-                &quot;Operatorul&quot;). Prin accesarea și utilizarea Platformei, utilizatorul confirmă că a citit,
+                (denumită în continuare &quot;Platforma&quot;), operată de:
+              </p>
+              <ul className="list-none space-y-1 mt-2 mb-3">
+                <li><strong className="text-white">Denumire:</strong> RAILIE SRL</li>
+                <li><strong className="text-white">CUI:</strong> [CUI_PLACEHOLDER]</li>
+                <li><strong className="text-white">Sediul social:</strong> Petrești, str. Mihai Viteazu, nr. 66, județ Alba, România</li>
+                <li><strong className="text-white">Email:</strong> contact@ggai.bet</li>
+              </ul>
+              <p className="text-yellow-400 text-xs">
+                La adresa sediului social NU se desfășoară relații cu publicul. Activitatea societății
+                se desfășoară exclusiv online.
+              </p>
+              <p className="mt-3">
+                Prin accesarea și utilizarea Platformei, utilizatorul confirmă că a citit,
                 a înțeles și este de acord cu acești termeni și condiții în totalitate.
               </p>
             </section>
@@ -38,21 +50,46 @@ export default function TermeniPage() {
             <section>
               <h2 className="text-lg font-semibold text-white mb-3">2. Descrierea serviciului</h2>
               <p>
-                GG-AI este o platformă care utilizează inteligența artificială pentru a analiza date sportive
-                și a genera predicții și sugestii de pariuri sportive. Serviciile noastre includ:
+                GG-AI este o platformă care utilizează inteligența artificială pentru a analiza date statistice
+                sportive și a genera rapoarte de analiză tehnică. Activitatea Operatorului se încadrează
+                exclusiv în:
               </p>
               <ul className="list-disc list-inside space-y-1 mt-2">
-                <li>Analize generate prin inteligență artificială pentru diverse sporturi;</li>
-                <li>Tichete zilnice cu selecții recomandate;</li>
-                <li>Clasamente de încredere (confidence scoring) pentru meciuri;</li>
+                <li><strong className="text-white">CAEN 6391</strong> — Activități ale agențiilor de știri
+                  (Informații furnizate prin portaluri web);</li>
+                <li><strong className="text-white">CAEN 7491</strong> — Activități de analiză tehnică.</li>
+              </ul>
+              <p className="mt-3">Serviciile noastre includ:</p>
+              <ul className="list-disc list-inside space-y-1 mt-2">
+                <li>Analize statistice generate prin inteligență artificială pentru diverse sporturi;</li>
+                <li>Rapoarte zilnice cu selecții bazate pe modele de analiză;</li>
+                <li>Scoruri de încredere (confidence scoring) derivate din date statistice;</li>
                 <li>Acces la date și statistici sportive actualizate.</li>
               </ul>
-              <p className="mt-3 font-semibold text-yellow-400">
-                ⚠ AVERTISMENT IMPORTANT: GG-AI NU garantează câștiguri. Pariurile sportive implică riscuri
-                financiare semnificative. Predicțiile noastre sunt generate de algoritmi de inteligență
-                artificială și reprezintă estimări bazate pe date statistice, nu certitudini. Utilizatorul
-                este singurul responsabil pentru deciziile de pariere luate.
-              </p>
+
+              <div className="mt-4 p-4 border border-yellow-400/30 rounded-lg bg-yellow-400/5">
+                <p className="font-semibold text-yellow-400 mb-2">⚠ CLAUZĂ ONJN / PARIURI SPORTIVE</p>
+                <p>
+                  GG-AI <strong className="text-white">NU este o casă de pariuri</strong>, <strong className="text-white">NU
+                  oferă servicii de jocuri de noroc</strong> și <strong className="text-white">NU intermediază
+                  pariuri sportive</strong> în niciun fel. Platforma nu este licențiată și nu intră sub
+                  incidența Oficiului Național pentru Jocuri de Noroc (ONJN). Serviciul oferit constă
+                  exclusiv în furnizarea de informații și analize statistice prin portaluri web, conform
+                  codurilor CAEN menționate mai sus.
+                </p>
+              </div>
+
+              <div className="mt-4 p-4 border border-red-400/30 rounded-lg bg-red-400/5">
+                <p className="font-semibold text-red-400 mb-2">⚠ EXONERARE DE RĂSPUNDERE (DISCLAIMER)</p>
+                <p>
+                  Pronosticurile și analizele generate de algoritmii AI sunt bazate exclusiv pe
+                  probabilități statistice, modele matematice și date istorice. Acestea <strong className="text-white">NU
+                  reprezintă certitudini</strong> și <strong className="text-white">NU garantează câștiguri</strong>.
+                  Utilizatorul își asumă <strong className="text-white">în totalitate riscul pierderii banilor</strong> investiți
+                  la orice casă de pariuri sau operator de jocuri de noroc. GG-AI nu poate fi tras la
+                  răspundere pentru pierderile financiare ale utilizatorilor.
+                </p>
+              </div>
             </section>
 
             <section>
@@ -99,17 +136,29 @@ export default function TermeniPage() {
             </section>
 
             <section>
-              <h2 className="text-lg font-semibold text-white mb-3">6. Politica de rambursare</h2>
+              <h2 className="text-lg font-semibold text-white mb-3">6. Politica de rambursare (FĂRĂ RETUR)</h2>
               <p>
-                Nu se oferă rambursări. Prin achiziționarea unui abonament, utilizatorul
-                confirmă că a înțeles și acceptă că toate plățile sunt finale și
-                nerambursabile. Conform Directivei 2011/83/UE, Art. 16(m), dreptul de
-                retragere nu se aplică serviciilor digitale a căror prestare a început
-                cu acordul prealabil expres al consumatorului, acesta recunoscând că
-                își pierde dreptul de retragere. Prin activarea abonamentului,
-                utilizatorul consimte expres la furnizarea imediată a serviciului și
-                renunță la dreptul de retragere.
+                <strong className="text-white">Nu se oferă rambursări.</strong> Prin achiziționarea unui abonament
+                și accesarea conținutului (analizelor statistice), serviciul digital este considerat
+                integral prestat (&quot;consumat&quot;).
               </p>
+              <p className="mt-3">
+                În conformitate cu <strong className="text-white">OUG 34/2014, Art. 16, lit. m)</strong> (transpunerea
+                în legislația română a Directivei 2011/83/UE), dreptul de retragere în termen de 14 zile
+                calendaristice <strong className="text-white">nu se aplică</strong> contractelor de furnizare de conținut
+                digital care nu este livrat pe un suport material, în cazul în care prestarea a început
+                cu acordul prealabil expres al consumatorului și după ce acesta a confirmat că a luat la
+                cunoștință de faptul că își va pierde dreptul de retragere.
+              </p>
+              <p className="mt-3">
+                Prin activarea abonamentului și accesarea oricărei analize generate de platformă,
+                utilizatorul:
+              </p>
+              <ul className="list-disc list-inside space-y-1 mt-2">
+                <li>Consimte expres la furnizarea imediată a serviciului digital;</li>
+                <li>Confirmă că a fost informat și acceptă pierderea dreptului de retragere în 14 zile;</li>
+                <li>Recunoaște că serviciul a fost prestat integral și nu poate solicita rambursarea.</li>
+              </ul>
               <p className="mt-3">
                 Anularea abonamentului oprește reînnoirea automată, dar nu generează
                 rambursarea sumei deja plătite. Accesul premium rămâne activ până la
