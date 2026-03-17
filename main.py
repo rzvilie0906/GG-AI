@@ -284,6 +284,11 @@ def _bootstrap_from_firestore():
         return  # Already have data
 
     print("📥 [BOOTSTRAP] sports.db is empty — downloading from Firestore...")
+    _refresh_from_firestore()
+
+
+def _get_firestore_client():
+    """Get or initialize a Firestore client."""
     try:
         import firebase_admin as _fb
         from firebase_admin import credentials as _creds, firestore as _fs
@@ -292,10 +297,34 @@ def _bootstrap_from_firestore():
             if os.path.exists(cred_path):
                 _fb.initialize_app(_creds.Certificate(cred_path))
             else:
-                print("⚠️ [BOOTSTRAP] No Firebase credentials — skipping.")
-                conn.close()
-                return
-        db_fs = _fs.client()
+                return None
+        return _fs.client()
+    except Exception:
+        return None
+
+
+_last_firestore_sync = ""  # ISO timestamp of last known Firestore sync
+
+
+def _refresh_from_firestore():
+    """Download events and odds from Firestore into local sports.db."""
+    global _last_firestore_sync
+    db_fs = _get_firestore_client()
+    if db_fs is None:
+        print("⚠️ [REFRESH] No Firebase credentials — skipping.")
+        return
+
+    try:
+        # Check if Firestore has newer data than what we last pulled
+        meta_doc = db_fs.collection("sync_meta").document("last_sync").get()
+        if meta_doc.exists:
+            meta = meta_doc.to_dict()
+            fs_timestamp = meta.get("timestamp", "")
+            if fs_timestamp and fs_timestamp == _last_firestore_sync:
+                return  # No new data since our last refresh
+            _last_firestore_sync = fs_timestamp
+
+        conn = _db_connect()
 
         # Download events
         total_events = 0
@@ -325,25 +354,37 @@ def _bootstrap_from_firestore():
                 total_odds += 1
 
         conn.commit()
-        print(f"✅ [BOOTSTRAP] Loaded {total_events} events + {total_odds} odds from Firestore.")
-    except Exception as e:
-        print(f"⚠️ [BOOTSTRAP] Firestore download failed: {e}")
-    finally:
         conn.close()
+        print(f"✅ [REFRESH] Loaded {total_events} events + {total_odds} odds from Firestore.")
+    except Exception as e:
+        print(f"⚠️ [REFRESH] Firestore download failed: {e}")
+
 
 async def auto_sync_worker():
-    """Sync events (ESPN, free) every 6h. Odds are synced by the Daily Sync workflow once/day to conserve API keys."""
+    """Sync events (ESPN, free) every 6h. Also refresh from Firestore every 2h for odds updates."""
     first_run = True
+    refresh_counter = 0
     while True:
-        print("\n🔄 [AUTOPILOT] Actualizez calendarul meciurilor (ESPN)...")
+        # Always try Firestore refresh first (picks up odds from GitHub Actions)
+        print("\n🔄 [AUTOPILOT] Checking Firestore for fresh data...")
+        try:
+            _refresh_from_firestore()
+        except Exception as e:
+            print(f"⚠️ [AUTOPILOT] Firestore refresh failed: {e}")
+
+        # Sync events from ESPN (free, no API key needed)
+        print("🔄 [AUTOPILOT] Actualizez calendarul meciurilor (ESPN)...")
         try:
             proc1 = await asyncio.create_subprocess_exec(sys.executable, 'sync_zile.py')
             await proc1.communicate()
-            print("✅ [AUTOPILOT] Calendar meciuri actualizat!")
+            if proc1.returncode == 0:
+                print("✅ [AUTOPILOT] Calendar meciuri actualizat!")
+            else:
+                print(f"⚠️ [AUTOPILOT] sync_zile.py exit code: {proc1.returncode}")
         except Exception as e:
             print(f"❌ [AUTOPILOT] Eroare sync_zile: {e}")
 
-        # Sync odds only on first startup (fresh data); daily refresh handled by GitHub Actions
+        # Sync odds only on first startup (fresh data); daily refresh handled by GitHub Actions + Firestore
         if first_run:
             print("🔄 [AUTOPILOT] Prima rulare — sincronizez și cotele...")
             try:
@@ -354,7 +395,7 @@ async def auto_sync_worker():
                 print(f"❌ [AUTOPILOT] Eroare sync_odds: {e}")
             first_run = False
 
-        await asyncio.sleep(21600)  # Repeat events sync every 6 hours
+        await asyncio.sleep(7200)  # Check every 2 hours (Firestore refresh + ESPN events)
 
 @app.on_event("startup")
 def _startup():
@@ -366,10 +407,23 @@ def _startup():
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
+def _ro_tz():
+    """Return Europe/Bucharest timezone offset (EET=+2, EEST=+3)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo("Europe/Bucharest")
+    except ImportError:
+        # Fallback: assume EET (+2) for simplicity
+        return timezone(timedelta(hours=2))
+
 def _day_bounds_utc(d: date) -> tuple[str, str]:
-    start = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-    end = start + timedelta(days=1)
-    return start.isoformat().replace("+00:00", "Z"), end.isoformat().replace("+00:00", "Z")
+    """Convert a Bucharest-local date to UTC start/end bounds for querying."""
+    ro = _ro_tz()
+    start_local = datetime(d.year, d.month, d.day, tzinfo=ro)
+    end_local = start_local + timedelta(days=1)
+    start_utc = start_local.astimezone(timezone.utc)
+    end_utc = end_local.astimezone(timezone.utc)
+    return start_utc.isoformat().replace("+00:00", "Z"), end_utc.isoformat().replace("+00:00", "Z")
 
 def _normalize_status(raw_status: str) -> str:
     """Normalizează statusul ESPN într-un status standard (upcoming/live/finished)."""
@@ -589,9 +643,11 @@ def sports(): return {"sports": SPORTS_LIST}
 
 @app.get("/dates")
 def available_dates():
-    today = date.today().isoformat()
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    ro = _ro_tz()
+    now_ro = datetime.now(ro)
+    today = now_ro.date().isoformat()
+    tomorrow = (now_ro.date() + timedelta(days=1)).isoformat()
+    yesterday = (now_ro.date() - timedelta(days=1)).isoformat()
     return {"default": today, "suggested": [yesterday, today, tomorrow]}
 
 @app.get("/leagues")
