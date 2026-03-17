@@ -39,14 +39,20 @@ jobs:
       - name: Determine sync mode
         id: sync_mode
         run: |
-          HOUR=$(date -u +%H)
-          # Full sync (with odds) at 06:00 or 07:00 UTC (09:00 Romania winter/summer)
-          if [ "$HOUR" = "06" ] || [ "$HOUR" = "07" ]; then
+          # Manual triggers (workflow_dispatch) always do a full sync
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "skip_odds=false" >> $GITHUB_OUTPUT
-            echo "Running FULL sync (events + odds)"
+            echo "Running FULL sync (manual trigger)"
           else
-            echo "skip_odds=true" >> $GITHUB_OUTPUT
-            echo "Running events-only sync (preserving API keys)"
+            HOUR=$(date -u +%H)
+            # Full sync (with odds) at 06:00 or 07:00 UTC (09:00 Romania winter/summer)
+            if [ "$HOUR" = "06" ] || [ "$HOUR" = "07" ]; then
+              echo "skip_odds=false" >> $GITHUB_OUTPUT
+              echo "Running FULL sync (events + odds)"
+            else
+              echo "skip_odds=true" >> $GITHUB_OUTPUT
+              echo "Running events-only sync (preserving API keys)"
+            fi
           fi
       - name: Run sync script
         env: 
