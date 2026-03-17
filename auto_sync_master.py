@@ -24,7 +24,7 @@ def _get_firestore_client():
     return firestore.client()
 
 
-def _upload_sync_data_to_firestore():
+def _upload_sync_data_to_firestore(skip_odds=False):
     """Upload events and odds from local sports.db to Firestore for persistence."""
     db_fs = _get_firestore_client()
     if db_fs is None:
@@ -79,37 +79,45 @@ def _upload_sync_data_to_firestore():
 
     print(f"✅ Uploaded {len(events_list)} events to Firestore ({len(new_event_refs)} chunks).")
 
-    # Write sync_meta immediately after events (so server knows about new events even if odds fail)
-    db_fs.collection("sync_meta").document("last_sync").set({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event_count": len(events_list),
-        "odds_count": 0,  # Updated below if odds upload succeeds
-    })
-
-    # Upload odds with smaller chunks (bookmakers_json blobs are large, Firestore has 1MB doc limit)
-    odds_rows = conn.execute("SELECT * FROM match_odds").fetchall()
-    odds_cols = [desc[0] for desc in conn.execute("SELECT * FROM match_odds LIMIT 1").description] if odds_rows else []
-    odds_list = [{col: row[col] for col in odds_cols} for row in odds_rows]
-
-    old_odds = db_fs.collection("sync_odds").stream()
-    for doc in old_odds:
-        doc.reference.delete()
-
-    odds_chunk_size = 50  # Smaller chunks for odds (bookmakers_json is large)
-    for i in range(0, len(odds_list), odds_chunk_size):
-        chunk = odds_list[i:i + odds_chunk_size]
-        db_fs.collection("sync_odds").document(f"chunk_{i // odds_chunk_size}").set({
-            "odds": chunk,
-            "count": len(chunk),
+    if skip_odds:
+        # Events-only sync: do NOT touch odds in Firestore, just update events metadata
+        db_fs.collection("sync_meta").document("last_sync").set({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_count": len(events_list),
+        }, merge=True)  # merge=True preserves existing odds_count
+        print("⏭️ skip_odds=True — preserving existing odds in Firestore.")
+    else:
+        # Write sync_meta immediately after events (so server knows about new events even if odds fail)
+        db_fs.collection("sync_meta").document("last_sync").set({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_count": len(events_list),
+            "odds_count": 0,  # Updated below if odds upload succeeds
         })
-    print(f"✅ Uploaded {len(odds_list)} odds records to Firestore.")
 
-    # Update sync_meta with final odds count
-    db_fs.collection("sync_meta").document("last_sync").set({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event_count": len(events_list),
-        "odds_count": len(odds_list),
-    })
+        # Upload odds with smaller chunks (bookmakers_json blobs are large, Firestore has 1MB doc limit)
+        odds_rows = conn.execute("SELECT * FROM match_odds").fetchall()
+        odds_cols = [desc[0] for desc in conn.execute("SELECT * FROM match_odds LIMIT 1").description] if odds_rows else []
+        odds_list = [{col: row[col] for col in odds_cols} for row in odds_rows]
+
+        old_odds = db_fs.collection("sync_odds").stream()
+        for doc in old_odds:
+            doc.reference.delete()
+
+        odds_chunk_size = 50  # Smaller chunks for odds (bookmakers_json is large)
+        for i in range(0, len(odds_list), odds_chunk_size):
+            chunk = odds_list[i:i + odds_chunk_size]
+            db_fs.collection("sync_odds").document(f"chunk_{i // odds_chunk_size}").set({
+                "odds": chunk,
+                "count": len(chunk),
+            })
+        print(f"✅ Uploaded {len(odds_list)} odds records to Firestore.")
+
+        # Update sync_meta with final odds count
+        db_fs.collection("sync_meta").document("last_sync").set({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_count": len(events_list),
+            "odds_count": len(odds_list),
+        })
 
     conn.close()
 
@@ -145,7 +153,7 @@ def main():
 
     print("\n▶️ PASUL 3: Upload date în Firestore (persistență) ...")
     try:
-        _upload_sync_data_to_firestore()
+        _upload_sync_data_to_firestore(skip_odds=skip_odds)
     except Exception as e:
         print(f"⚠️ [WARN] Upload Firestore eșuat (non-fatal): {e}")
 
