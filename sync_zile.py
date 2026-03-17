@@ -1,6 +1,6 @@
 import sqlite3
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 SPORT_LEAGUES = {
     "football": {
@@ -51,6 +51,9 @@ def sync_urmatoarele_7_zile():
     print("⏳ Descarc calendarul CURAT pentru următoarele 7 zile (Toate sporturile)...")
     # Clean up stale tennis entries (old format stored tournament-level "Unknown" records)
     cur.execute("DELETE FROM events WHERE sport='tennis' AND (home_team='Unknown' OR away_team='Unknown')")
+    # Clean up old events (older than 2 days) to prevent stale data accumulation
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT00:00Z")
+    cur.execute("DELETE FROM events WHERE start_time_utc < ?", (cutoff,))
     conn.commit()
     total_meciuri = 0
     

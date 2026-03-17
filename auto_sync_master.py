@@ -4,6 +4,7 @@ import sys
 import os
 import json
 import sqlite3
+from datetime import datetime, timezone
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -37,24 +38,55 @@ def _upload_sync_data_to_firestore():
     conn = sqlite3.connect("sports.db")
     conn.row_factory = sqlite3.Row
 
+    # Ensure match_odds table exists (may not exist if --skip-odds was used)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS match_odds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            league_key TEXT, sport_key TEXT, match_title TEXT,
+            start_time TEXT, bookmakers_json TEXT, updated_at TEXT
+        )
+    """)
+
     # Upload events in chunks (Firestore doc limit ~1MB)
     rows = conn.execute("SELECT * FROM events").fetchall()
     events_list = [dict(r) for r in rows]
-    chunk_size = 400
-    # Clear old sync data
-    old_docs = db_fs.collection("sync_events").stream()
-    for doc in old_docs:
-        doc.reference.delete()
+    event_chunk_size = 400
 
-    for i in range(0, len(events_list), chunk_size):
-        chunk = events_list[i:i + chunk_size]
-        db_fs.collection("sync_events").document(f"chunk_{i // chunk_size}").set({
+    if not events_list:
+        print("⚠️ No events to upload — skipping Firestore upload.")
+        conn.close()
+        return
+
+    # Upload new events first, THEN delete old ones (avoid empty window)
+    new_event_refs = []
+    for i in range(0, len(events_list), event_chunk_size):
+        chunk = events_list[i:i + event_chunk_size]
+        doc_id = f"chunk_{i // event_chunk_size}"
+        db_fs.collection("sync_events_new").document(doc_id).set({
             "events": chunk,
             "count": len(chunk),
         })
-    print(f"✅ Uploaded {len(events_list)} events to Firestore ({(len(events_list) - 1) // chunk_size + 1} chunks).")
+        new_event_refs.append(doc_id)
 
-    # Upload odds
+    # Clear old sync data and rename new to current
+    old_docs = db_fs.collection("sync_events").stream()
+    for doc in old_docs:
+        doc.reference.delete()
+    for doc_id in new_event_refs:
+        data = db_fs.collection("sync_events_new").document(doc_id).get().to_dict()
+        db_fs.collection("sync_events").document(doc_id).set(data)
+        db_fs.collection("sync_events_new").document(doc_id).delete()
+
+    print(f"✅ Uploaded {len(events_list)} events to Firestore ({len(new_event_refs)} chunks).")
+
+    # Write sync_meta immediately after events (so server knows about new events even if odds fail)
+    db_fs.collection("sync_meta").document("last_sync").set({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_count": len(events_list),
+        "odds_count": 0,  # Updated below if odds upload succeeds
+    })
+
+    # Upload odds with smaller chunks (bookmakers_json blobs are large, Firestore has 1MB doc limit)
     odds_rows = conn.execute("SELECT * FROM match_odds").fetchall()
     odds_cols = [desc[0] for desc in conn.execute("SELECT * FROM match_odds LIMIT 1").description] if odds_rows else []
     odds_list = [{col: row[col] for col in odds_cols} for row in odds_rows]
@@ -63,13 +95,21 @@ def _upload_sync_data_to_firestore():
     for doc in old_odds:
         doc.reference.delete()
 
-    for i in range(0, len(odds_list), chunk_size):
-        chunk = odds_list[i:i + chunk_size]
-        db_fs.collection("sync_odds").document(f"chunk_{i // chunk_size}").set({
+    odds_chunk_size = 50  # Smaller chunks for odds (bookmakers_json is large)
+    for i in range(0, len(odds_list), odds_chunk_size):
+        chunk = odds_list[i:i + odds_chunk_size]
+        db_fs.collection("sync_odds").document(f"chunk_{i // odds_chunk_size}").set({
             "odds": chunk,
             "count": len(chunk),
         })
     print(f"✅ Uploaded {len(odds_list)} odds records to Firestore.")
+
+    # Update sync_meta with final odds count
+    db_fs.collection("sync_meta").document("last_sync").set({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_count": len(events_list),
+        "odds_count": len(odds_list),
+    })
 
     conn.close()
 
