@@ -28,6 +28,8 @@ LEAGUE_MAP = {
     "mex.1": "soccer_mexico_ligamx",
     "sco.1": "soccer_spl",
     "bel.1": "soccer_belgium_first_div",
+    "usa.1": "soccer_usa_mls",
+    "fifa.world": "soccer_fifa_world_cup",
     "nba": "basketball_nba",
     "wnba": "basketball_wnba",
     "nhl": "icehockey_nhl",
