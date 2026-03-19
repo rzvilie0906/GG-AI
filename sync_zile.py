@@ -5,11 +5,11 @@ from datetime import datetime, timedelta, timezone
 SPORT_LEAGUES = {
     "football": {
         "espn_path": "soccer", 
-        "leagues": ["rou.1", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "uefa.champions", "uefa.europa", "uefa.europa.conf", "ned.1", "tur.1", "gre.1", "usa.1"]
+        "leagues": ["rou.1", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "uefa.champions", "uefa.europa", "uefa.europa.conf", "ned.1", "tur.1", "gre.1", "usa.1", "por.1", "bra.1", "arg.1", "mex.1", "col.1", "sco.1", "bel.1"]
     },
     "basketball": {
         "espn_path": "basketball", 
-        "leagues": ["nba", "mens-euroleague"]
+        "leagues": ["nba", "wnba"]
     },
     "hockey": {
         "espn_path": "hockey", 
@@ -57,7 +57,7 @@ def sync_urmatoarele_7_zile():
     conn.commit()
     total_meciuri = 0
     
-    for i in range(8):
+    for i in range(7):
         target_date = datetime.now() + timedelta(days=i)
         date_str = target_date.strftime("%Y%m%d")
         
