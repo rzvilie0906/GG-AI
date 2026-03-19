@@ -361,41 +361,19 @@ def _refresh_from_firestore():
 
 
 async def auto_sync_worker():
-    """Sync events (ESPN, free) every 6h. Also refresh from Firestore every 2h for odds updates."""
-    first_run = True
-    refresh_counter = 0
+    """Refresh from Firestore every hour to pick up data from the daily 09:00 sync."""
     while True:
-        # Always try Firestore refresh first (picks up odds from GitHub Actions)
+        # Refresh from Firestore (picks up events + odds uploaded by morning sync)
         print("\n🔄 [AUTOPILOT] Checking Firestore for fresh data...")
         try:
             _refresh_from_firestore()
         except Exception as e:
             print(f"⚠️ [AUTOPILOT] Firestore refresh failed: {e}")
 
-        # Sync events from ESPN (free, no API key needed)
-        print("🔄 [AUTOPILOT] Actualizez calendarul meciurilor (ESPN)...")
-        try:
-            proc1 = await asyncio.create_subprocess_exec(sys.executable, 'sync_zile.py')
-            await proc1.communicate()
-            if proc1.returncode == 0:
-                print("✅ [AUTOPILOT] Calendar meciuri actualizat!")
-            else:
-                print(f"⚠️ [AUTOPILOT] sync_zile.py exit code: {proc1.returncode}")
-        except Exception as e:
-            print(f"❌ [AUTOPILOT] Eroare sync_zile: {e}")
+        # All syncing (ESPN + Odds API) happens ONCE daily at 09:00 Romanian time
+        # via auto_sync_master.py on the local machine. The server only reads from Firestore.
 
-        # Sync odds only on first startup (fresh data); daily refresh handled by GitHub Actions + Firestore
-        if first_run:
-            print("🔄 [AUTOPILOT] Prima rulare — sincronizez și cotele...")
-            try:
-                proc2 = await asyncio.create_subprocess_exec(sys.executable, 'sync_odds.py')
-                await proc2.communicate()
-                print("✅ [AUTOPILOT] Cote actualizate!")
-            except Exception as e:
-                print(f"❌ [AUTOPILOT] Eroare sync_odds: {e}")
-            first_run = False
-
-        await asyncio.sleep(7200)  # Check every 2 hours (Firestore refresh + ESPN events)
+        await asyncio.sleep(3600)  # Check every hour for fresh Firestore data
 
 @app.on_event("startup")
 def _startup():

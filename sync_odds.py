@@ -2,7 +2,7 @@ import os
 import sqlite3
 import requests
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,16 +19,19 @@ LEAGUE_MAP = {
     "uefa.champions": "soccer_uefa_champs_league",
     "uefa.europa": "soccer_uefa_europa_league",
     "uefa.europa.conf": "soccer_uefa_europa_conference_league",
-    "fifa.world": "soccer_fifa_world_cup",
     "rou.1": "soccer_romania_liga1",
     "ned.1": "soccer_netherlands_eredivisie",
     "por.1": "soccer_portugal_primeira_liga",
     "tur.1": "soccer_turkey_super_league",
+    "bra.1": "soccer_brazil_serie_a",
+    "arg.1": "soccer_argentina_primera_division",
+    "mex.1": "soccer_mexico_ligamx",
+    "sco.1": "soccer_spl",
+    "bel.1": "soccer_belgium_first_div",
     "nba": "basketball_nba",
-    "euroleague": "basketball_euroleague",
+    "wnba": "basketball_wnba",
     "nhl": "icehockey_nhl",
     "mlb": "baseball_mlb",
-    "mlb_preseason": "baseball_mlb_preseason"
 }
 
 def get_live_tennis_sports(api_key):
@@ -76,31 +79,51 @@ def sync_odds():
     conn = init_db()
     cur = conn.cursor()
 
-    print("📊 Încep descărcarea cotelor COMPLETE (1X2, Totals, Spreads)...")
+    # Date filter: only fetch odds for the next 2 days
+    now_utc = datetime.now(timezone.utc)
+    commence_from = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    commence_to = (now_utc + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"📅 Filtrez cote doar pentru perioada: {commence_from} → {commence_to}")
+
+    # Only fetch odds for leagues that actually have events in the DB
+    try:
+        existing_leagues = set(
+            r[0] for r in conn.execute("SELECT DISTINCT league_key FROM events").fetchall()
+        )
+    except Exception:
+        existing_leagues = set()
+
+    print("📊 Încep descărcarea cotelor (1X2, Totals, Spreads)...")
     print(f"🔑 Avem la dispoziție {len(API_KEYS)} chei API.")
+    print("💰 Cost: 3 credite per ligă (h2h+totals+spreads, eu region)")
 
     total_matches = 0
     current_key_index = 0
+    api_calls = 0
 
     for espn_key, odds_key in LEAGUE_MAP.items():
+        # Skip leagues with no events in DB (saves API credits)
+        if existing_leagues and espn_key not in existing_leagues:
+            print(f"   ⏭️ Skip {odds_key} (no events in DB for {espn_key})")
+            continue
+
         print(f"   -> Scanez liga: {odds_key}...")
         
-        if odds_key.startswith("soccer"):
-            regions = "eu"
-            markets = "h2h,totals,spreads"
-        else:
-            regions = "us,eu"
-            markets = "h2h,totals,spreads"
+        # h2h+totals+spreads × eu = 3 credits/call (~60/day × 30 = 1800/month, fits 4 keys × 500)
+        regions = "eu"
+        markets = "h2h,totals,spreads"
             
         while current_key_index < len(API_KEYS):
             current_key = API_KEYS[current_key_index]
             
-            url = f"https://api.the-odds-api.com/v4/sports/{odds_key}/odds/?apiKey={current_key}&regions={regions}&markets={markets}&oddsFormat=decimal"
+            url = f"https://api.the-odds-api.com/v4/sports/{odds_key}/odds/?apiKey={current_key}&regions={regions}&markets={markets}&oddsFormat=decimal&commenceTimeFrom={commence_from}&commenceTimeTo={commence_to}"
             
             try:
                 resp = requests.get(url, timeout=15)
                 
                 if resp.status_code == 200:
+                    api_calls += 1
+                    remaining = resp.headers.get('x-requests-remaining', '?')
                     matches = resp.json()
                     for m in matches:
                         title = f"{m.get('home_team')} vs {m.get('away_team')}"
@@ -115,6 +138,7 @@ def sync_odds():
                         ))
                         total_matches += 1
                     
+                    print(f"      ✅ {len(matches)} matches (credits remaining: {remaining})")
                     break 
                     
                 elif resp.status_code == 429:
@@ -154,12 +178,14 @@ def sync_odds():
 
             while current_key_index < len(API_KEYS):
                 current_key = API_KEYS[current_key_index]
-                url = f"https://api.the-odds-api.com/v4/sports/{tennis_key}/odds/?apiKey={current_key}&regions={regions}&markets={markets}&oddsFormat=decimal"
+                url = f"https://api.the-odds-api.com/v4/sports/{tennis_key}/odds/?apiKey={current_key}&regions={regions}&markets={markets}&oddsFormat=decimal&commenceTimeFrom={commence_from}&commenceTimeTo={commence_to}"
 
                 try:
                     resp = requests.get(url, timeout=15)
 
                     if resp.status_code == 200:
+                        api_calls += 1
+                        remaining = resp.headers.get('x-requests-remaining', '?')
                         matches = resp.json()
                         for m in matches:
                             title = f"{m.get('home_team')} vs {m.get('away_team')}"
@@ -175,6 +201,7 @@ def sync_odds():
                                 league_key, tennis_key, title, start_time, json.dumps(bookies), datetime.now(timezone.utc).isoformat()
                             ))
                             total_matches += 1
+                        print(f"      ✅ {len(matches)} matches (credits remaining: {remaining})")
                         break
 
                     elif resp.status_code == 429:
@@ -205,7 +232,8 @@ def sync_odds():
     conn.close()
     
     print("=====================================================")
-    print(f"✅ GATA! Am descărcat și actualizat cotele live (Complete) pentru {total_matches} meciuri viitoare.")
+    print(f"✅ GATA! Am descărcat cotele pentru {total_matches} meciuri ({api_calls} API calls).")
+    print(f"💰 Credite consumate: ~{api_calls * 3} (3 credite/call cu h2h+totals+spreads × eu)")
     print("=====================================================")
 
 if __name__ == "__main__":
