@@ -2,12 +2,9 @@ name: Daily Sync
 
 on:
   schedule:
-    # Events-only sync every 6h (ESPN is free)
-    - cron: '0 1,13,19 * 1-3,11-12 *'   # Winter events-only: 03:00, 15:00, 21:00 Romania
-    - cron: '0 0,12,18 * 4-10 *'         # Summer events-only: 03:00, 15:00, 21:00 Romania
-    # FULL sync (events+odds) at 09:00 Romania, before ticket generation at 10:00
-    - cron: '0 7 * 1-3,11-12 *'          # Winter FULL sync: 09:00 Romania (EET, UTC+2)
-    - cron: '0 6 * 4-10 *'               # Summer FULL sync: 09:00 Romania (EEST, UTC+3)
+    # FULL sync (events + odds) once daily at 09:00 Romania, before ticket generation at 10:00
+    - cron: '0 7 * 1-3,11-12 *'   # Winter: 09:00 Romania (EET, UTC+2)
+    - cron: '0 6 * 4-10 *'        # Summer: 09:00 Romania (EEST, UTC+3)
   workflow_dispatch:
 
 jobs:
@@ -36,30 +33,7 @@ jobs:
           }
         env:
           FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-      - name: Determine sync mode
-        id: sync_mode
-        run: |
-          # Manual triggers (workflow_dispatch) always do a full sync
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "skip_odds=false" >> $GITHUB_OUTPUT
-            echo "Running FULL sync (manual trigger)"
-          else
-            HOUR=$(date -u +%H)
-            # Full sync (with odds) at 06:00 or 07:00 UTC (09:00 Romania winter/summer)
-            if [ "$HOUR" = "06" ] || [ "$HOUR" = "07" ]; then
-              echo "skip_odds=false" >> $GITHUB_OUTPUT
-              echo "Running FULL sync (events + odds)"
-            else
-              echo "skip_odds=true" >> $GITHUB_OUTPUT
-              echo "Running events-only sync (preserving API keys)"
-            fi
-          fi
       - name: Run sync script
         env: 
           ODDS_API_KEYS: ${{ secrets.ODDS_API_KEYS }}
-        run: |
-          if [ "${{ steps.sync_mode.outputs.skip_odds }}" = "true" ]; then
-            python auto_sync_master.py --skip-odds
-          else
-            python auto_sync_master.py
-          fi
+        run: python auto_sync_master.py
