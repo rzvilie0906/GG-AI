@@ -88,6 +88,7 @@ jobs:
       - name: Commit updated ticket JSONs to repo
         run: |
           # Copy generated tickets to data/ folder
+          mkdir -p data
           cp daily_ticket_*.json data/
 
           git config user.name "github-actions[bot]"
