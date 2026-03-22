@@ -30,6 +30,9 @@ LEAGUE_MAP = {
     "bel.1": "soccer_belgium_first_div",
     "usa.1": "soccer_usa_mls",
     "fifa.world": "soccer_fifa_world_cup",
+    "fifa.worldq.uefa": "soccer_fifa_world_cup_qualifiers_europe",
+    "uefa.euro": "soccer_uefa_european_championship",
+    "uefa.euroq": "soccer_uefa_euro_qualification",
     "nba": "basketball_nba",
     "wnba": "basketball_wnba",
     "nhl": "icehockey_nhl",
@@ -103,9 +106,12 @@ def sync_odds():
     current_key_index = 0
     api_calls = 0
 
+    # International competitions may have sparse schedules — always try to fetch odds
+    ALWAYS_SYNC_LEAGUES = {"fifa.world", "fifa.worldq.uefa", "uefa.euro", "uefa.euroq"}
+
     for espn_key, odds_key in LEAGUE_MAP.items():
-        # Skip leagues with no events in DB (saves API credits)
-        if existing_leagues and espn_key not in existing_leagues:
+        # Skip leagues with no events in DB (saves API credits), but always sync international competitions
+        if existing_leagues and espn_key not in existing_leagues and espn_key not in ALWAYS_SYNC_LEAGUES:
             print(f"   ⏭️ Skip {odds_key} (no events in DB for {espn_key})")
             continue
 
