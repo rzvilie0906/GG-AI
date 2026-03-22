@@ -33,7 +33,7 @@ export default function TermeniPage() {
               </p>
               <ul className="list-none space-y-1 mt-2 mb-3">
                 <li><strong className="text-white">Denumire:</strong> RAILIE SRL</li>
-                <li><strong className="text-white">CUI:</strong> [CUI_PLACEHOLDER]</li>
+                <li><strong className="text-white">CUI:</strong> 54307609</li>
                 <li><strong className="text-white">Sediul social:</strong> Petrești, str. Mihai Viteazu, nr. 66, județ Alba, România</li>
                 <li><strong className="text-white">Email:</strong> contact@ggai.bet</li>
               </ul>

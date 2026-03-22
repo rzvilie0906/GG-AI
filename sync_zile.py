@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 SPORT_LEAGUES = {
     "football": {
         "espn_path": "soccer", 
-        "leagues": ["rou.1", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "uefa.champions", "uefa.europa", "uefa.europa.conf", "ned.1", "tur.1", "usa.1", "por.1", "bra.1", "arg.1", "mex.1", "sco.1", "bel.1", "fifa.world"]
+        "leagues": ["rou.1", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "uefa.champions", "uefa.europa", "uefa.europa.conf", "ned.1", "tur.1", "usa.1", "por.1", "bra.1", "arg.1", "mex.1", "sco.1", "bel.1", "fifa.world", "fifa.worldq.uefa", "uefa.euro", "uefa.euroq"]
     },
     "basketball": {
         "espn_path": "basketball", 
