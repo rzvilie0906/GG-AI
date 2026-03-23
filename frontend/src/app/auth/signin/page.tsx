@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
-import { sendPasswordResetEmail } from "firebase/auth";
+import { sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -23,6 +23,7 @@ function SignInForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [resetMode, setResetMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
@@ -43,6 +44,7 @@ function SignInForm() {
         setLoading(false);
         return;
       }
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       await signIn(email, password);
       // If there's a priceId, go to checkout flow
       if (priceId) {
@@ -111,6 +113,7 @@ function SignInForm() {
         setLoading(false);
         return;
       }
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       const result = await signInWithGoogle();
       if (result.needsProfile) {
         const params = new URLSearchParams();
@@ -294,6 +297,21 @@ function SignInForm() {
                 placeholder="••••••••"
               />
             </div>
+
+            {/* Remember me checkbox */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer accent-[var(--primary)]"
+              />
+              <label htmlFor="rememberMe" className="text-sm text-text-secondary cursor-pointer select-none">
+                Rămâi autentificat
+              </label>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
