@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 
 // ── Price IDs from env ──
@@ -12,17 +13,30 @@ const PRICE_ELITE_MONTHLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_ELITE_MONTHLY |
 const PRICE_ELITE_YEARLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_ELITE_YEARLY || "";
 
 export default function LandingPage() {
-  const { user, subscription } = useAuth();
+  const { user, subscription, signOut } = useAuth();
+  const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [proAnnual, setProAnnual] = useState(false);
   const [eliteAnnual, setEliteAnnual] = useState(false);
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handler);
     return () => window.removeEventListener("scroll", handler);
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -46,6 +60,20 @@ export default function LandingPage() {
 
   const isLoggedIn = !!user;
   const isActive = subscription?.status === "active";
+
+  const userEmail = user?.email;
+  const userName = user?.displayName;
+  const initials = userName
+    ? userName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)
+    : userEmail
+    ? userEmail.charAt(0).toUpperCase()
+    : "?";
+
+  function handleSignOut() {
+    setProfileOpen(false);
+    router.push("/");
+    signOut();
+  }
 
   return (
     <div className="landing-page">
@@ -77,6 +105,45 @@ export default function LandingPage() {
                 <Link href="/auth/signin" className="lp-btn lp-btn-outline lp-btn-sm">Autentificare</Link>
                 <Link href="/auth/signup" className="lp-btn lp-btn-primary lp-btn-sm">Începe Acum</Link>
               </>
+            )}
+            {isLoggedIn && (
+              <div className="lp-profile-wrapper" ref={profileRef}>
+                <button
+                  onClick={() => setProfileOpen(!profileOpen)}
+                  className="lp-profile-avatar"
+                  title={userEmail || ""}
+                >
+                  {initials}
+                </button>
+                {profileOpen && (
+                  <div className="lp-profile-dropdown">
+                    <div className="lp-profile-header">
+                      {userName && <p className="lp-profile-name">{userName}</p>}
+                      <p className="lp-profile-email">{userEmail}</p>
+                    </div>
+                    <div className="lp-profile-menu">
+                      <button onClick={() => { setProfileOpen(false); router.push("/account"); }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                        Contul meu
+                      </button>
+                      <button onClick={() => { setProfileOpen(false); router.push("/pricing?upgrade=true"); }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                        Upgrade plan
+                      </button>
+                      <button onClick={() => { setProfileOpen(false); router.push("/suport"); }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                        Suport
+                      </button>
+                    </div>
+                    <div className="lp-profile-footer">
+                      <button onClick={handleSignOut}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                        Deconectare
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
           <button className="lp-nav-toggle" onClick={() => setMobileMenu(!mobileMenu)} aria-label="Meniu">
@@ -594,6 +661,39 @@ const landingStyles = `
   .lp-nav-links a { color: var(--lp-text-dim); font-size: 14px; font-weight: 500; text-decoration: none; transition: color .2s; }
   .lp-nav-links a:hover { color: white; }
   .lp-nav-toggle { display: none; background: none; border: none; cursor: pointer; padding: 8px; }
+
+  /* Profile dropdown */
+  .lp-profile-wrapper { position: relative; }
+  .lp-profile-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--lp-primary), #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: white; border: none; cursor: pointer;
+    transition: box-shadow .2s;
+  }
+  .lp-profile-avatar:hover { box-shadow: 0 0 16px rgba(59,130,246,0.4); }
+  .lp-profile-dropdown {
+    position: absolute; right: 0; top: 44px; width: 224px;
+    border-radius: 12px; border: 1px solid var(--lp-border);
+    background: rgba(13,17,23,0.95); backdrop-filter: blur(20px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5); z-index: 1001;
+  }
+  .lp-profile-header {
+    padding: 12px 16px; border-bottom: 1px solid var(--lp-border);
+  }
+  .lp-profile-name { font-size: 13px; font-weight: 600; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lp-profile-email { font-size: 12px; color: var(--lp-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lp-profile-menu { padding: 4px 0; }
+  .lp-profile-menu button, .lp-profile-footer button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 10px 16px; font-size: 13px; font-weight: 500;
+    color: var(--lp-text-dim); background: none; border: none; cursor: pointer;
+    text-align: left; transition: all .15s;
+  }
+  .lp-profile-menu button:hover { color: white; background: rgba(255,255,255,0.05); }
+  .lp-profile-footer { border-top: 1px solid var(--lp-border); padding: 4px 0; }
+  .lp-profile-footer button { color: #f87171; }
+  .lp-profile-footer button:hover { color: #fca5a5; background: rgba(248,113,113,0.06); }
   .lp-nav-toggle span {
     display: block; width: 20px; height: 2px; background: var(--lp-text-dim);
     margin: 4px 0; border-radius: 2px; transition: .3s;
