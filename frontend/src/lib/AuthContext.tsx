@@ -246,6 +246,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOutFn = async () => {
+    // Invalidează token-ul de remember prin proxy Next.js
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {
+      console.error("Eroare la invalidarea sesiunii:", e);
+    }
     await firebaseSignOut(auth);
     setUser(null);
     setSubscription(null);

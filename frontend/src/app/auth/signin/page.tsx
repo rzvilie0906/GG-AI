@@ -23,7 +23,7 @@ function SignInForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [resetMode, setResetMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
@@ -46,6 +46,22 @@ function SignInForm() {
       }
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       await signIn(email, password);
+      // Creează token de remember pe backend (prin proxy Next.js)
+      try {
+        const fbToken = await auth.currentUser?.getIdToken();
+        if (fbToken) {
+          await fetch("/api/auth/remember", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${fbToken}`,
+            },
+            body: JSON.stringify({ remember: rememberMe }),
+          });
+        }
+      } catch (e) {
+        console.error("Remember token error:", e);
+      }
       // If there's a priceId, go to checkout flow
       if (priceId) {
         router.push(`/pricing?priceId=${priceId}`);
@@ -115,6 +131,22 @@ function SignInForm() {
       }
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       const result = await signInWithGoogle();
+      // Creează token de remember pe backend (prin proxy Next.js)
+      try {
+        const fbToken = await auth.currentUser?.getIdToken();
+        if (fbToken) {
+          await fetch("/api/auth/remember", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${fbToken}`,
+            },
+            body: JSON.stringify({ remember: rememberMe }),
+          });
+        }
+      } catch (e) {
+        console.error("Remember token error:", e);
+      }
       if (result.needsProfile) {
         const params = new URLSearchParams();
         params.set("redirect", priceId ? `/pricing?priceId=${priceId}` : redirect);
