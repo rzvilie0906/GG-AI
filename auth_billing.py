@@ -16,12 +16,14 @@ import os
 import json
 import sqlite3
 import logging
+import secrets
+import hashlib
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional
 
 import stripe
-from fastapi import APIRouter, Request, HTTPException, Header
+from fastapi import APIRouter, Request, HTTPException, Header, Depends, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -142,6 +144,21 @@ def init_users_db():
             PRIMARY KEY (uid, match_key, usage_date)
         )
     """)
+    # ── Tabel remember_tokens pentru "Ține-mă minte" ──
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS remember_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            user_agent TEXT,
+            ip TEXT,
+            FOREIGN KEY (uid) REFERENCES users(uid) ON DELETE CASCADE
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_remember_tokens_uid ON remember_tokens(uid)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_remember_tokens_hash ON remember_tokens(token_hash)")
     conn.commit()
     conn.close()
     print("✅ Users DB inițializat (users.db)")
@@ -273,6 +290,104 @@ def _already_viewed_today(uid: str, match_key: str) -> bool:
     ).fetchone()
     conn.close()
     return row is not None
+
+# ─── Remember Token Helpers ───────────────────────────────────────────────────
+
+REMEMBER_TOKEN_DAYS = 30  # Durata de viață a token-ului "Ține-mă minte"
+
+def _hash_token(token: str) -> str:
+    """Hash SHA-256 al token-ului — în DB stocăm doar hash-ul."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+def _create_remember_token(uid: str, user_agent: str = None, ip: str = None) -> str:
+    """
+    Generează un token securizat, stochează hash-ul în DB și returnează token-ul brut.
+    Token-ul brut va fi trimis clientului într-un cookie HttpOnly.
+    """
+    raw_token = secrets.token_urlsafe(64)  # 64 bytes → ~86 caractere URL-safe
+    token_hash = _hash_token(raw_token)
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=REMEMBER_TOKEN_DAYS)).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+
+    conn = _users_connect()
+    conn.execute(
+        """INSERT INTO remember_tokens (uid, token_hash, expires_at, created_at, user_agent, ip)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (uid, token_hash, expires_at, now, user_agent, ip),
+    )
+    conn.commit()
+    conn.close()
+    return raw_token
+
+def _validate_remember_token(raw_token: str) -> Optional[dict]:
+    """
+    Validează un token brut. Returnează rândul din DB dacă token-ul este valid
+    și nu a expirat, altfel None.
+    """
+    token_hash = _hash_token(raw_token)
+    conn = _users_connect()
+    row = conn.execute(
+        "SELECT * FROM remember_tokens WHERE token_hash = ?", (token_hash,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    row_dict = dict(row)
+    expires_at = datetime.fromisoformat(row_dict["expires_at"])
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
+        # Token expirat — ștergem
+        _revoke_remember_token_by_hash(token_hash)
+        return None
+
+    return row_dict
+
+def _rotate_remember_token(old_token: str, uid: str, user_agent: str = None, ip: str = None) -> str:
+    """
+    Rotație token: invalidează token-ul vechi și creează unul nou.
+    Previne atacuri de tip replay.
+    """
+    _revoke_remember_token_by_hash(_hash_token(old_token))
+    return _create_remember_token(uid, user_agent, ip)
+
+def _revoke_remember_token_by_hash(token_hash: str):
+    """Șterge un token din DB pe baza hash-ului."""
+    conn = _users_connect()
+    conn.execute("DELETE FROM remember_tokens WHERE token_hash = ?", (token_hash,))
+    conn.commit()
+    conn.close()
+
+def _revoke_all_remember_tokens(uid: str) -> int:
+    """Revocă toate token-urile de remember ale unui utilizator. Returnează câte au fost șterse."""
+    conn = _users_connect()
+    cur = conn.execute("DELETE FROM remember_tokens WHERE uid = ?", (uid,))
+    count = cur.rowcount
+    conn.commit()
+    conn.close()
+    return count
+
+def _cleanup_expired_tokens():
+    """Șterge token-urile expirate din DB."""
+    conn = _users_connect()
+    conn.execute("DELETE FROM remember_tokens WHERE expires_at < ?",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    conn.close()
+
+def _get_active_sessions(uid: str) -> list[dict]:
+    """Returnează toate sesiunile active ale unui utilizator."""
+    conn = _users_connect()
+    rows = conn.execute(
+        """SELECT id, created_at, expires_at, user_agent, ip
+           FROM remember_tokens WHERE uid = ? AND expires_at > ?
+           ORDER BY created_at DESC""",
+        (uid, datetime.now(timezone.utc).isoformat()),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 # ─── Firebase Token Verification ──────────────────────────────────────────────
 
@@ -974,3 +1089,162 @@ async def create_support_ticket(request: Request, authorization: Optional[str] =
 
     print(f"📩 [Support] New ticket from {email} (plan: {plan or 'none'}, priority: {priority})")
     return {"status": "ok", "message": "Cererea a fost trimisă cu succes."}
+
+# ── Remember Me Endpoints ─────────────────────────────────────────────────────
+
+class RememberMeRequest(BaseModel):
+    remember: bool = False
+
+@billing_router.post("/api/auth/remember")
+async def create_remember_session(
+    request: Request,
+    body: RememberMeRequest,
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Creează un token "Ține-mă minte" și îl setează ca cookie HttpOnly.
+    Se apelează după autentificarea cu succes, doar dacă utilizatorul a bifat opțiunea.
+    """
+    decoded = await verify_firebase_token(authorization)
+    uid = decoded["uid"]
+
+    user_agent = request.headers.get("user-agent", "unknown")
+    ip = request.client.host if request.client else "unknown"
+
+    response = JSONResponse({"status": "ok", "remember": body.remember})
+
+    if body.remember:
+        raw_token = _create_remember_token(uid, user_agent, ip)
+        response.set_cookie(
+            key="remember_token",
+            value=raw_token,
+            max_age=REMEMBER_TOKEN_DAYS * 24 * 60 * 60,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+        # Cookie de sesiune cu UID-ul (pentru middleware Next.js)
+        response.set_cookie(
+            key="token",
+            value=uid,
+            max_age=REMEMBER_TOKEN_DAYS * 24 * 60 * 60,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+    else:
+        # Sesiune fără persistență — cookie de sesiune (fără max_age = se șterge la închidere)
+        response.set_cookie(
+            key="token",
+            value=uid,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+
+    return response
+
+@billing_router.post("/api/auth/validate-remember")
+async def validate_remember(request: Request):
+    """
+    Validează un token de remember din cookie.
+    Dacă token-ul este valid, face rotație (înlocuiește cu un token nou)
+    și returnează UID-ul utilizatorului.
+    """
+    raw_token = request.cookies.get("remember_token")
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Cookie de remember lipsă.")
+
+    token_data = _validate_remember_token(raw_token)
+    if not token_data:
+        # Token invalid sau expirat — ștergem cookie-urile
+        response = JSONResponse(
+            status_code=401,
+            content={"detail": "Token de remember invalid sau expirat."},
+        )
+        response.delete_cookie("remember_token", path="/")
+        response.delete_cookie("token", path="/")
+        return response
+
+    uid = token_data["uid"]
+    user_agent = request.headers.get("user-agent", "unknown")
+    ip = request.client.host if request.client else "unknown"
+
+    # Rotație token — securitate contra replay attacks
+    new_token = _rotate_remember_token(raw_token, uid, user_agent, ip)
+
+    response = JSONResponse({
+        "status": "ok",
+        "uid": uid,
+    })
+    response.set_cookie(
+        key="remember_token",
+        value=new_token,
+        max_age=REMEMBER_TOKEN_DAYS * 24 * 60 * 60,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        key="token",
+        value=uid,
+        max_age=REMEMBER_TOKEN_DAYS * 24 * 60 * 60,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+@billing_router.post("/api/auth/logout")
+async def logout_remember(request: Request, authorization: Optional[str] = Header(default=None)):
+    """
+    Invalidează token-ul de remember la deconectare și șterge cookie-urile.
+    """
+    # Invalidare token din DB
+    raw_token = request.cookies.get("remember_token")
+    if raw_token:
+        token_hash = _hash_token(raw_token)
+        _revoke_remember_token_by_hash(token_hash)
+
+    response = JSONResponse({"status": "ok", "message": "Deconectat cu succes."})
+    response.delete_cookie("remember_token", path="/")
+    response.delete_cookie("token", path="/")
+    return response
+
+@billing_router.post("/api/auth/revoke-all-sessions")
+async def revoke_all_sessions(authorization: Optional[str] = Header(default=None)):
+    """
+    Revocă toate sesiunile active ale utilizatorului curent.
+    Util pentru securitate — "Deconectare de pe toate dispozitivele".
+    """
+    decoded = await verify_firebase_token(authorization)
+    uid = decoded["uid"]
+    count = _revoke_all_remember_tokens(uid)
+
+    # Opțional: revocăm și token-urile Firebase (forțează re-autentificare pe toate dispozitivele)
+    if firebase_app:
+        try:
+            firebase_auth.revoke_refresh_tokens(uid)
+        except Exception as e:
+            logging.warning(f"Nu s-au putut revoca token-urile Firebase pentru {uid}: {e}")
+
+    return {
+        "status": "ok",
+        "revoked_sessions": count,
+        "message": f"{count} sesiune(i) revocată(e) cu succes.",
+    }
+
+@billing_router.get("/api/auth/active-sessions")
+async def list_active_sessions(authorization: Optional[str] = Header(default=None)):
+    """
+    Returnează lista sesiunilor active ale utilizatorului curent.
+    """
+    decoded = await verify_firebase_token(authorization)
+    uid = decoded["uid"]
+    sessions = _get_active_sessions(uid)
+    return {"sessions": sessions}

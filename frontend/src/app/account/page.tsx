@@ -20,6 +20,7 @@ export default function AccountPage() {
   const router = useRouter();
   const [cancelLoading, setCancelLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [revokeLoading, setRevokeLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"info" | "success" | "error">("info");
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -175,6 +176,33 @@ export default function AccountPage() {
   async function handleSignOut() {
     window.location.href = "/";
     await signOut();
+  }
+
+  async function handleRevokeAllSessions() {
+    setRevokeLoading(true);
+    try {
+      const token = await getIdToken();
+      const res = await fetch(`${API_BASE}/api/auth/revoke-all-sessions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showMessage(`${data.revoked_sessions} sesiune(i) revocată(e). Vei fi deconectat de pe toate dispozitivele.`, "success");
+        // Deconectează și sesiunea curentă după un scurt delay
+        setTimeout(async () => {
+          window.location.href = "/auth/signin";
+          await signOut();
+        }, 2000);
+      } else {
+        showMessage("Eroare la revocarea sesiunilor.", "error");
+      }
+    } catch {
+      showMessage("Eroare la revocarea sesiunilor.", "error");
+    } finally {
+      setRevokeLoading(false);
+    }
   }
 
   const planLabels: Record<string, string> = {
@@ -391,6 +419,42 @@ export default function AccountPage() {
             </button>
           </div>
         )}
+
+        {/* Sesiuni Active — Revocare */}
+        <div className="card p-6 mb-6">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-text-muted mb-5 flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            Sesiuni active
+          </h2>
+          <p className="text-text-secondary text-sm mb-4">
+            Dacă suspectezi acces neautorizat, revocă toate sesiunile.
+            Vei fi deconectat de pe toate dispozitivele.
+          </p>
+          <button
+            onClick={handleRevokeAllSessions}
+            disabled={revokeLoading}
+            className="px-5 py-2.5 rounded-xl border border-danger/20 text-sm font-medium text-danger hover:bg-danger/10 transition disabled:opacity-50 flex items-center gap-2"
+          >
+            {revokeLoading ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Se revocă...
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                Deconectează de pe toate dispozitivele
+              </>
+            )}
+          </button>
+        </div>
 
         {/* Subscription Section */}
         <div className="card p-6 mb-6">
