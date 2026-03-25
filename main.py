@@ -102,6 +102,30 @@ SPORT_TO_ODDS_PREFIX = {
     "tennis": "tennis"
 }
 
+def _trim_odds_json(odds_str: str, max_bookmakers: int = 3) -> str:
+    """Compress odds JSON to reduce token count: keep top N bookmakers, flatten structure."""
+    if not odds_str or odds_str.startswith("COTE_LIPSĂ"):
+        return odds_str
+    try:
+        bookmakers = json.loads(odds_str) if isinstance(odds_str, str) else odds_str
+        if not isinstance(bookmakers, list) or not bookmakers:
+            return odds_str
+        trimmed = []
+        for bookie in bookmakers[:max_bookmakers]:
+            b = {"title": bookie.get("title", ""), "markets": []}
+            for mkt in bookie.get("markets", []):
+                m = {"key": mkt.get("key", ""), "outcomes": []}
+                for o in mkt.get("outcomes", []):
+                    entry = {"name": o.get("name", ""), "price": o.get("price")}
+                    if o.get("point") is not None:
+                        entry["point"] = o["point"]
+                    m["outcomes"].append(entry)
+                b["markets"].append(m)
+            trimmed.append(b)
+        return json.dumps(trimmed, ensure_ascii=False)
+    except Exception:
+        return odds_str
+
 class AnalyzeRequest(BaseModel):
     sport: Sport
     league: str = Field(min_length=1, max_length=160)
@@ -1344,112 +1368,31 @@ async def analyze(
         live_intel = get_real_live_data(data.sport, event_id, league_key, data.home_team, data.away_team)
 
     system_prompt = generate_system_prompt()
-    user_input = f"""
-    MECI: {data.home_team} vs {data.away_team}
-    LIGA: {data.league}
-    DATA: {data.match_date}
     
-    🚨 REZULTATE MATEMATICE REALE (PROCESATE DE SERVER - INTERZIS SĂ MODIFICI ACESTE CIFRE):
-    - Gazde: {intel_pool['forma_exacta_gazde']}
-    - Oaspeți: {intel_pool['forma_exacta_oaspeti']}
-
-    === 1. COTE LIVE DE LA CASELE DE PARIURI (1X2, Totals, Spreads) ===
-    ```json
-    {odds_str}
-    ```
-
-    === 2. DATE OFICIALE LIVE (Clasament, Forma, H2H, Absenți, Vreme, Predicții) ===
-    {live_intel}
+    # Trim odds to reduce token cost (keep top 3 bookmakers, remove bloat)
+    odds_trimmed = _trim_odds_json(odds_str)
     
-    {f"Note Extra de la utilizator: {data.extra_context}" if data.extra_context else ""}
+    user_input = f"""MECI: {data.home_team} vs {data.away_team}
+LIGA: {data.league}
+DATA: {data.match_date}
+SPORT: {data.sport}
 
-    ⚠️ REGULĂ CRITICĂ ANTI-UMPLUTURĂ (FĂRĂ SCUZE):
-    Dacă secțiunea "DATE OFICIALE LIVE" de mai sus este parțial goală (ex: lipsesc H2H sau clasamentul, lucru normal la meciurile de Cupă), ESTE STRICT INTERZIS să te scuzi în text. Nu folosi NICIODATĂ expresii precum "Deși nu avem informații", "Datele nu sunt disponibile", "În absența altor date". 
-    În schimb, bazează-te exclusiv pe vasta ta cunoaștere internă despre istoria acestor cluburi, valoarea lotului și tactica antrenorilor pentru a umple golurile. Fii asumat, direct și sigur pe tine!
+FORMĂ MATEMATICĂ (server-calculated, nu modifica):
+- Gazde: {intel_pool['forma_exacta_gazde']}
+- Oaspeți: {intel_pool['forma_exacta_oaspeti']}
 
-    INSTRUCȚIUNE MENTALĂ OBLIGATORIE:
-    Înainte de a genera textul pentru "section1_analysis", procesează următoarele puncte din viziunea unui analist expert:
-    - Contextul competiției (miza meciului)
-    - Forma recentă acasă/deplasare
-    - Poziția în clasament și diferența de puncte
-    - Forța ofensivă vs Forța defensivă
-    - Posesie, tactică și stil de joc preconizat
-    - Impactul jucătorilor absenți asupra lotului
-    - Istoricul direct (H2H)
-    - Factori fizici și psihologici
-    
-    ⚠️ REGULI STRICTE DE ANALIZĂ (CITEȘTE CU ATENȚIE):
+COTE LIVE:
+{odds_trimmed}
 
-    SITUAȚIA A (Dacă ai primit date la secțiunea 2):
-    - FĂRĂ POEZIE! Este interzis să folosești descrieri vagi ("formă favorabilă"). 
-    - Tradu forma (W/D/L) în cifre clare: "Echipa are X victorii și Y înfrângeri". 
-    - Bazează-te STRICT pe ce cifre ai primit (folosește datele de la secțiunea REZULTATE MATEMATICE de mai sus).
-
-    SITUAȚIA B (Dacă datele de la secțiunea 2 lipsesc sau sunt indisponibile):
-    - ESTE STRICT INTERZIS SĂ INVENTEZI forma recentă (victorii/înfrângeri în ultimele 5 meciuri) sau scoruri directe (H2H)!
-    - ESTE STRICT INTERZIS să te scuzi (ex: "Nu avem informații despre formă").
-    - În acest caz, concentrează-te EXCLUSIV pe: diferența de valoare a loturilor, experiența în competițiile europene, stilul tactic tradițional al echipelor și avantajul terenului propriu. Fii un analist care cunoaște greutatea cluburilor, dar nu inventează statistici de weekend.
-
-    ⚠️ REGULA 2 - ANTI-UMPLUTURĂ LA DATE LIPSĂ:
-    Dacă datele de mai sus sunt goale (lucru normal uneori la meciurile de Cupă), NU te scuza ("Datele nu sunt disponibile"). Bazează-te exclusiv pe memoria ta vastă despre istoria cluburilor și scrie exact ce știi despre forța lor globală.
-
-    ⚠️ REGULA 3 - GESTIONAREA COTELOR LIPSĂ (Peste/Sub, Handicap):
-    Dacă decizi că cel mai bun pariu este unul de tip "Peste/Sub" sau "Handicap" (în special la Baschet/Hochei), iar în secțiunea "COTE LIVE" primești doar cotele pentru câștigător (h2h/1x2), ESTE PERFECT NORMAL! 
-    Nu scrie "N/A" sau "Fără cote live". În schimb, la secțiunea "odds", estimează o cotă standard de piață (ex: 1.85 - 1.90 pentru liniile asiatice/puncte echilibrate) și menționează la detalii: "Cota estimată pentru linia standard. Verifică oferta agenției tale."
-    
-    ⚠️ REGULĂ SPECIALĂ PENTRU BASCHET ȘI HOCHEI:
-    Dacă sportul este baschet sau hochei, ESTE OBLIGATORIU să cauți și să analizezi piețele de "totals" (Peste/Sub puncte/goluri) și "spreads" (Handicap asiatic) din secțiunea de cote. Recomanzi soliști sau șansă dublă doar dacă cotele pentru 1X2 indică o valoare reală clară.
-
-    ⚠️ REGULA DE AUR A EXPERTULUI (INTERZIS SĂ O ÎNCALCI):
-    ESTE STRICT INTERZIS să folosești expresii de genul "Nu avem informații despre...", "Nu dispun de date", "Deși nu cunoaștem" sau "Lipsesc informațiile". Un tipster profesionist nu se plânge niciodată de lipsa datelor!
-    Dacă o anumită informație (cum ar fi forma recentă, H2H sau accidentările) lipsește din datele brute pe care le primești, PUR ȘI SIMPLU IGNORĂ subiectul și nu îl menționa deloc în text. 
-    Compensează folosind cunoștințele tale interne despre valoarea loturilor, stilul de joc istoric (ex: defensiv, ofensiv), motivația din campionat și cotele primite. Fii mereu 100% asertiv, obiectiv și sigur pe tine!
-
-    ⚠️ REGULA COTELOR (TOLERANȚĂ ZERO LA INVENTAT):
-    Cotele pe care le recomanzi pe bilet și pe care le afișezi în analiza ta TREBUIE SĂ FIE EXTRASE STRICT ȘI EXACT din datele pe care le primești în câmpul `cote_reale_agregate`.
-    ESTE STRICT INTERZIS să inventezi, să aproximezi sau să estimezi cote din oficiu (ex: nu pune 1.85 sau 1.90 la Peste/Sub doar pentru că așa e standardul). 
-    Dacă decizi să joci "Peste 2.5 goluri", te duci în JSON la `totals`, te uiți la casa de pariuri, cauți exact "Over 2.5" și iei cota REALĂ de acolo (ex: 1.73 sau 2.05). Dacă o cotă nu există fizic în JSON-ul primit, folosește textul "N/A" sau "Cotă indisponibilă momentan". Nu te juca cu banii pariorilor!
-
-    ⚠️ INTERZIS SĂ TE PLÂNGI DE LIPSA DATELOR:
-    - Este STRICT INTERZIS să folosești expresii precum: "Fără date recente", "În absența unor informații", "Nu putem evalua", "Lipsesc detalii", "Nu știm forma". 
-    - Este STRICT INTERZIS să aduci vorba de absenți, accidentări sau "lineup-uri". Dacă nu primești aceste date, PRESUPUNE implicit că ambele echipe aliniază cel mai bun 11.
-    - Vorbește asertiv DOAR despre lucrurile pe care le ȘTII sigur (cote, statistici primite). Un tipster adevărat nu se plânge niciodată clienților săi că nu și-a făcut temele!
-
-    ⚠️ REGULA ECHILIBRULUI ȘI A VALORII REALE (FĂRĂ PREJUDECĂȚI):
-    1. Ești un analist obiectiv. NU te fixa pe un singur tip de pariu (nu da mereu "Peste 2.5" sau mereu "GG"). 
-    2. Citește cu mare atenție MEDIILE de goluri și forța ofensivă/defensivă! Dacă ambele echipe au medii mici de goluri marcate (ex: sub 1.3) și apărări solide, este OBLIGATORIU să recomanzi "Sub 2.5" sau "Sub 3.5". Nu forța pariuri pe goluri multe la echipe defensive!
-    3. Soliștii (1, X, 2) sunt pariuri excelente dacă o echipă are o cotă cu valoare reală. Poți sugera și Șansă Dublă (1X sau X2) dacă cota permite.
-    4. Alege cel mai LOGIC pariu din tot meniul disponibil (1X2, Peste/Sub, GG/NGG, DNB, Handicap, Pauza sau Final). Adaptează pariul EXACT la stilul de joc din statistici (ex: echipe de contraatac = meci închis = Sub 2.5/NGG; echipe ofensive = Peste 2.5/GG).
-    5. Poti alege de asemenea si gg sau peste 2.5 sau gg si peste 2.5, daca datele indica acest lucru.
-    
-    ⚠️ ANALIZA AVANSATĂ A PIEȚEI 'BOTH TEAMS TO SCORE' (GG/NGG):
-    SCENARIUL GG: Dacă ambele echipe au primit gol în cel puțin 70% din meciurile sezonului curent și au o medie de peste 1.3 goluri marcate, prioritizează 'Ambele marchează: DA' (GG).
-    SCENARIUL NGG: Dacă una dintre echipe are o defensivă de fier (sub 0.8 goluri primite/meci) SAU dacă ambele echipe au medii de marcare sub 1.0 goluri/meci (meciuri de tip 'under'), prioritizează 'Ambele marchează: NU' (NGG).
-    VALOARE: Dacă cota pentru NGG este de peste 1.80 în meciuri cu echipe defensive (ex. campionatul Italiei Serie B sau ligile secunde), recomandă acest pronostic ca 'High Value'. Nu forța GG-ul doar pentru spectacol; pariază pe pragmatism dacă cifrele o cer.
-
-    ⚠️ CALCULUL VALORII MATEMATICE (OBLIGATORIU):
-    1. Estimarea Probabilității: Pe baza formei sezonului, H2H și absenților, atribuie o probabilitate procentuală (ex. 60%) pentru pronosticul ales (GG, 1, Over etc.).
-    2. Verificarea Cotei: Identifică cota reală din JSON.
-    3. Aplicarea Formulei: Calculează Value = (Probabilitate * Cotă) - 1.
-    4. Criteriu de Selecție: Recomandă pronosticul DOAR dacă valoarea este pozitivă (>0).
-    5. Exemplu de logică în text: 'Estimez o probabilitate de 70% pentru GG (echivalentul unei cote de 1.43). Deoarece casa oferă cota 1.70, avem un Value de 0.19, ceea ce face pariul extrem de atractiv.'
-
-    INSTRUCȚIUNE MENTALĂ OBLIGATORIE:
-    Înainte de a scrie "section1_analysis", procesează: Miza, Forma exactă (W/D/L tradusă), Clasamentul, Forța Ofensivă, Istoricul H2H și Absenții.
-    Corelează datele de mai sus și generează DOAR JSON valid conform schemei, găsind cel mai bun value bet pentru a-ți câștiga existența!
-
-    ⚠️ REGULĂ ABSOLUTĂ PENTRU model_probability ȘI fair_odds (ANTI-VALORI STATICE):
-    - model_probability TREBUIE să fie un număr UNIC calculat matematic pe baza datelor ACESTUI meci specific.
-    - Formula fair_odds = 100 / model_probability (rotunjit la 2 zecimale).
-    - ESTE STRICT INTERZIS să folosești mereu aceleași valori! NU folosi: 60/1.67, 65/1.54, 55/1.82 ca valori implicite.
-    - Calculul: analizezi forma (% victorii), media goluri, H2H, forța echipelor → derivezi un procent REAL (ex: 72.3%, nu mereu 60 sau 65).
-    - Fiecare meci produce probabilități DIFERITE. Un meci Real Madrid vs echipă mică = 82%. Un derby = 53%.
-    - main_bet și secondary_bets TREBUIE să aibă probabilități DIFERITE între ele.
-    """
+DATE OFICIALE:
+{live_intel}
+{f"Note utilizator: {data.extra_context}" if data.extra_context else ""}
+Returnează DOAR JSON valid conform schemei din system prompt."""
     try:
         response = client.chat.completions.create(
             model=MODEL,
             temperature=0,
+            max_tokens=1200,
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_input}],
         )
         content = response.choices[0].message.content
