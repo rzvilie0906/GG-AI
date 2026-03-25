@@ -76,6 +76,12 @@ def init_db():
     conn.commit()
     return conn
 
+# ── Credit budget ──────────────────────────────────────────────
+# 2000 credits/month (4 keys × 500) ÷ 31 days ≈ 64 credits/day.
+# We cap each sync at 65 credits to stay safely within budget.
+DAILY_CREDIT_BUDGET = 65
+MAX_TENNIS_TOURNAMENTS = 3
+
 def sync_odds():
     if not API_KEYS:
         print("❌ EROARE: Nu ai pus ODDS_API_KEYS în fișierul .env (sau formatul e greșit)!")
@@ -98,28 +104,34 @@ def sync_odds():
     except Exception:
         existing_leagues = set()
 
-    print("📊 Încep descărcarea cotelor (1X2, Totals, Spreads)...")
+    print("📊 Încep descărcarea cotelor (piețe inteligente per sport)...")
     print(f"🔑 Avem la dispoziție {len(API_KEYS)} chei API.")
-    print("💰 Cost: 3 credite per ligă (h2h+totals+spreads, eu region)")
+    print(f"💰 Buget zilnic: {DAILY_CREDIT_BUDGET} credite (soccer/tennis=2cr, rest=3cr)")
 
     total_matches = 0
     current_key_index = 0
     api_calls = 0
-
-    # International competitions may have sparse schedules — always try to fetch odds
-    ALWAYS_SYNC_LEAGUES = {"fifa.world", "fifa.worldq.uefa", "uefa.euro", "uefa.euroq"}
+    credits_used = 0
 
     for espn_key, odds_key in LEAGUE_MAP.items():
-        # Skip leagues with no events in DB (saves API credits), but always sync international competitions
-        if existing_leagues and espn_key not in existing_leagues and espn_key not in ALWAYS_SYNC_LEAGUES:
+        # Skip leagues with no events in DB (saves API credits)
+        if existing_leagues and espn_key not in existing_leagues:
             print(f"   ⏭️ Skip {odds_key} (no events in DB for {espn_key})")
             continue
 
-        print(f"   -> Scanez liga: {odds_key}...")
-        
-        # h2h+totals+spreads × eu = 3 credits/call (~60/day × 30 = 1800/month, fits 4 keys × 500)
+        # Smart market selection per sport:
+        # Tennis: h2h + totals = 2 credits (no spreads in tennis)
+        # Soccer/Basketball/Hockey/Baseball: h2h + totals + spreads = 3 credits
         regions = "eu"
         markets = "h2h,totals,spreads"
+        call_cost = 3
+
+        # Check budget before making the call
+        if credits_used + call_cost > DAILY_CREDIT_BUDGET:
+            print(f"   ⚠️ Buget zilnic atins ({credits_used}/{DAILY_CREDIT_BUDGET} credite). Opresc scanarea ligilor.")
+            break
+
+        print(f"   -> Scanez liga: {odds_key} ({markets}, {call_cost}cr)...")
             
         while current_key_index < len(API_KEYS):
             current_key = API_KEYS[current_key_index]
@@ -131,6 +143,7 @@ def sync_odds():
                 
                 if resp.status_code == 200:
                     api_calls += 1
+                    credits_used += call_cost
                     remaining = resp.headers.get('x-requests-remaining', '?')
                     matches = resp.json()
                     for m in matches:
@@ -146,7 +159,7 @@ def sync_odds():
                         ))
                         total_matches += 1
                     
-                    print(f"      ✅ {len(matches)} matches (credits remaining: {remaining})")
+                    print(f"      ✅ {len(matches)} matches (budget: {credits_used}/{DAILY_CREDIT_BUDGET}cr, key remaining: {remaining})")
                     break 
                     
                 elif resp.status_code == 429:
@@ -174,15 +187,28 @@ def sync_odds():
             break
 
     # ── Tennis: descoperire dinamică a sporturilor active ──────────
-    if current_key_index < len(API_KEYS):
+    if current_key_index < len(API_KEYS) and credits_used < DAILY_CREDIT_BUDGET:
         print("\n🎾 Descoperire dinamică a turneelor de tenis active...")
         tennis_sports = get_live_tennis_sports(API_KEYS[current_key_index])
-        print(f"   Găsite {len(tennis_sports)} turnee de tenis active: {tennis_sports}")
+        # Cap tennis tournaments to save credits
+        if len(tennis_sports) > MAX_TENNIS_TOURNAMENTS:
+            print(f"   Găsite {len(tennis_sports)} turnee — limitat la {MAX_TENNIS_TOURNAMENTS} (buget)")
+            tennis_sports = tennis_sports[:MAX_TENNIS_TOURNAMENTS]
+        else:
+            print(f"   Găsite {len(tennis_sports)} turnee de tenis active: {tennis_sports}")
 
         for tennis_key in tennis_sports:
-            print(f"   -> Scanez tenis: {tennis_key}...")
+            # Tennis: h2h + totals = 2 credits (no spreads in tennis)
             regions = "eu"
-            markets = "h2h,totals,spreads"
+            markets = "h2h,totals"
+            call_cost = 2
+
+            # Check budget
+            if credits_used + call_cost > DAILY_CREDIT_BUDGET:
+                print(f"   ⚠️ Buget zilnic atins ({credits_used}/{DAILY_CREDIT_BUDGET}cr). Opresc scanarea tenisului.")
+                break
+
+            print(f"   -> Scanez tenis: {tennis_key} ({markets}, {call_cost}cr)...")
 
             while current_key_index < len(API_KEYS):
                 current_key = API_KEYS[current_key_index]
@@ -193,6 +219,7 @@ def sync_odds():
 
                     if resp.status_code == 200:
                         api_calls += 1
+                        credits_used += call_cost
                         remaining = resp.headers.get('x-requests-remaining', '?')
                         matches = resp.json()
                         for m in matches:
@@ -209,7 +236,7 @@ def sync_odds():
                                 league_key, tennis_key, title, start_time, json.dumps(bookies), datetime.now(timezone.utc).isoformat()
                             ))
                             total_matches += 1
-                        print(f"      ✅ {len(matches)} matches (credits remaining: {remaining})")
+                        print(f"      ✅ {len(matches)} matches (budget: {credits_used}/{DAILY_CREDIT_BUDGET}cr, key remaining: {remaining})")
                         break
 
                     elif resp.status_code == 429:
@@ -241,7 +268,8 @@ def sync_odds():
     
     print("=====================================================")
     print(f"✅ GATA! Am descărcat cotele pentru {total_matches} meciuri ({api_calls} API calls).")
-    print(f"💰 Credite consumate: ~{api_calls * 3} (3 credite/call cu h2h+totals+spreads × eu)")
+    print(f"💰 Credite consumate: {credits_used}/{DAILY_CREDIT_BUDGET} buget zilnic")
+    print(f"📊 Estimare lunară: ~{credits_used * 31} credite/lună din 2000 disponibile")
     print("=====================================================")
 
 if __name__ == "__main__":
