@@ -24,6 +24,46 @@ def _get_firestore_client():
     return firestore.client()
 
 
+def _download_odds_from_firestore():
+    """Download odds from Firestore into local sports.db (uses 0 API credits)."""
+    db_fs = _get_firestore_client()
+    if db_fs is None:
+        print("⚠️ Firebase not initialized — cannot download odds from Firestore.")
+        return False
+
+    if not os.path.exists("sports.db"):
+        print("⚠️ sports.db not found — cannot populate match_odds.")
+        return False
+
+    conn = sqlite3.connect("sports.db", timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("DROP TABLE IF EXISTS match_odds")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS match_odds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            league_key TEXT, sport_key TEXT, match_title TEXT,
+            start_time TEXT, bookmakers_json TEXT, updated_at TEXT
+        )
+    """)
+
+    total = 0
+    for doc in db_fs.collection("sync_odds").stream():
+        chunk = doc.to_dict().get("odds", [])
+        for row in chunk:
+            conn.execute("""
+                INSERT INTO match_odds (league_key, sport_key, match_title, start_time, bookmakers_json, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                row.get("league_key"), row.get("sport_key"), row.get("match_title"),
+                row.get("start_time"), row.get("bookmakers_json"), row.get("updated_at")
+            ))
+            total += 1
+    conn.commit()
+    conn.close()
+    print(f"✅ Downloaded {total} odds records from Firestore (0 API credits used).")
+    return total > 0
+
+
 def _upload_sync_data_to_firestore(skip_odds=False):
     """Upload events and odds from local sports.db to Firestore for persistence."""
     db_fs = _get_firestore_client()
@@ -138,6 +178,12 @@ def main():
 
     if skip_odds:
         print("\n⏭️ PASUL 2: SKIP sync_odds.py (--skip-odds flag)")
+        print("\n▶️ PASUL 2b: Descărcare cote din Firestore (0 credite API) ...")
+        try:
+            if not _download_odds_from_firestore():
+                print("⚠️ Nu s-au găsit cote în Firestore — biletele vor fi generate fără cote.")
+        except Exception as e:
+            print(f"⚠️ [WARN] Download odds from Firestore failed: {e}")
     else:
         time.sleep(3)
         print("\n▶️ PASUL 2: Rulăm sync_odds.py (Cote The Odds API) ...")
