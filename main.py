@@ -529,7 +529,8 @@ def _fix_probabilities(parsed: dict, odds_str: str) -> dict:
                             mkt_matches = (
                                 ("h2h" in mkt_key and any(k in market for k in ["1x2", "victorie", "winner", "moneyline", "câștigătoare"])) or
                                 ("totals" in mkt_key and any(k in market for k in ["total", "peste", "sub", "over", "under"])) or
-                                ("spreads" in mkt_key and any(k in market for k in ["handicap", "spread"]))
+                                ("spreads" in mkt_key and any(k in market for k in ["handicap", "spread"])) or
+                                ("btts" in mkt_key and any(k in market for k in ["gg", "ngg", "btts", "both", "ambele", "marcheaz"]))
                             )
                             if not mkt_matches:
                                 continue
