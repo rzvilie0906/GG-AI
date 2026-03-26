@@ -20,6 +20,11 @@ interface AnalysisPanelProps {
   analysisQuotaLocked?: boolean;
   analysisResetAt?: string | null;
   analysisQuotaMessage?: string | null;
+  analysisNotAvailable?: {
+    message: string;
+    eta: string;
+    availableAt: string;
+  } | null;
 }
 
 // ── Countdown Timer ──
@@ -213,7 +218,41 @@ export default function AnalysisPanel({
   analysisQuotaLocked,
   analysisResetAt,
   analysisQuotaMessage,
+  analysisNotAvailable,
 }: AnalysisPanelProps) {
+  // ── Not available state: future match, analysis not yet synced ──
+  if (analysisNotAvailable && selectedMatch && !isRiskMode) {
+    return (
+      <div className="card p-5 animate-fade-in">
+        <div className="flex flex-col items-center justify-center py-16 gap-5">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <Clock className="text-primary" size={32} />
+          </div>
+          <div className="text-center max-w-md">
+            <div className="font-bold text-lg text-text-main mb-1">
+              {selectedMatch.home_team} vs {selectedMatch.away_team}
+            </div>
+            <div className="text-text-muted text-sm mb-5 leading-relaxed">
+              {analysisNotAvailable.message}
+            </div>
+            <div className="text-text-secondary text-xs mb-4 leading-relaxed">
+              Analizele sunt generate zilnic pe baza datelor actualizate — cote, statistici și formă recentă. Pentru predicții cât mai precise, analiza devine disponibilă doar în ziua meciului.
+            </div>
+            {analysisNotAvailable.availableAt && (
+              <div className="inline-flex items-center gap-3 bg-surface-elevated/60 border border-[rgba(255,255,255,0.08)] px-6 py-4 rounded-xl">
+                <Clock className="text-primary opacity-80" size={18} />
+                <div className="flex flex-col items-start">
+                  <span className="text-[10px] uppercase tracking-widest text-text-muted font-semibold">Disponibilă în aproximativ</span>
+                  <CountdownTimer resetAt={analysisNotAvailable.availableAt} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Locked state: quota exceeded, show full-panel lock ──
   if (analysisQuotaLocked && !isRiskMode) {
     return (

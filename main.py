@@ -1277,6 +1277,32 @@ async def analyze(
     else:
         require_api_key(x_api_key)
 
+    # ── Restrict analysis to TODAY only ──
+    # Analysis is only available for the current Romanian day (after sync at ~10:00).
+    # Future matches must wait until their day arrives.
+    ro = _ro_tz()
+    today_ro = datetime.now(ro).date()
+    if data.match_date != today_ro:
+        # Calculate ETA until analysis becomes available (next day at 10:00 Romania)
+        match_day_10am = datetime(data.match_date.year, data.match_date.month, data.match_date.day, 10, 0, 0, tzinfo=ro)
+        now_ro = datetime.now(ro)
+        diff = match_day_10am - now_ro
+        if diff.total_seconds() > 0:
+            hours_left = int(diff.total_seconds() // 3600)
+            mins_left = int((diff.total_seconds() % 3600) // 60)
+            eta_str = f"{hours_left}h {mins_left}m" if hours_left > 0 else f"{mins_left}m"
+        else:
+            eta_str = "curând"
+        raise HTTPException(
+            status_code=422,
+            detail=json.dumps({
+                "code": "ANALYSIS_NOT_AVAILABLE",
+                "message": f"Analiza pentru acest meci va fi disponibilă pe {data.match_date.strftime('%d.%m.%Y')} după sincronizarea zilnică (~10:00).",
+                "eta": eta_str,
+                "available_at": match_day_10am.isoformat(),
+            })
+        )
+
     # ── Build match key for cache + view tracking ──
     seif_key = f"{data.sport}_{data.home_team}_{data.away_team}_{data.match_date}".replace(" ", "_").lower()
 

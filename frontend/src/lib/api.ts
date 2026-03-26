@@ -173,6 +173,20 @@ export async function analyzeMatch(
       err.isQuotaError = true;
       throw err;
     }
+    if (r.status === 422) {
+      const errData = await r.json().catch(() => ({}));
+      let parsed: any = {};
+      try {
+        parsed = typeof errData.detail === "string" ? JSON.parse(errData.detail) : errData.detail || {};
+      } catch { parsed = { message: errData.detail }; }
+      if (parsed.code === "ANALYSIS_NOT_AVAILABLE") {
+        const err: any = new Error(parsed.message || "Analiza nu este disponibilă pentru acest meci.");
+        err.isNotAvailable = true;
+        err.eta = parsed.eta || null;
+        err.availableAt = parsed.available_at || null;
+        throw err;
+      }
+    }
     const errText = await r.text().catch(() => "");
     throw new Error(`HTTP ${r.status}: ${errText}`);
   }

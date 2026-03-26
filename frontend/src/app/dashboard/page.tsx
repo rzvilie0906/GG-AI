@@ -79,6 +79,12 @@ export default function Dashboard() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [riskQuotaResetAt, setRiskQuotaResetAt] = useState<string | null>(null);
 
+  const [analysisNotAvailable, setAnalysisNotAvailable] = useState<{
+    message: string;
+    eta: string;
+    availableAt: string;
+  } | null>(null);
+
   const isAnalyzingRef = useRef(false);
 
   // Fetch user profile for display name + check profile completion
@@ -240,12 +246,46 @@ export default function Dashboard() {
     setAnalysis(null);
     setAnalysisError(null);
     setQuotaResetAt(null);
+    setAnalysisNotAvailable(null);
     setPickInput("");
+
+    // ── Check if match is for today (Romania time) ──
+    const now = new Date();
+    const todayRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
+    const todayISO = `${todayRO.getFullYear()}-${String(todayRO.getMonth() + 1).padStart(2, "0")}-${String(todayRO.getDate()).padStart(2, "0")}`;
+    const matchDate = selectedDate || todayISO;
+
+    if (matchDate !== todayISO) {
+      // Calculate ETA until analysis becomes available (match day at 10:00 Romania)
+      const [y, m, d] = matchDate.split("-").map(Number);
+      const availableAt = new Date(Date.UTC(y, m - 1, d, 7, 0, 0)); // 10:00 Romania ≈ 07:00 UTC (summer) or 08:00 UTC (winter)
+      // More precise: use locale conversion
+      const availableLocal = new Date(`${matchDate}T10:00:00`);
+      // Build Romania 10:00 as UTC
+      const roOffset = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Bucharest" })).getTime() - new Date().getTime() + new Date().getTimezoneOffset() * 60000;
+      const availableUTC = new Date(availableLocal.getTime() - roOffset);
+      
+      const diffMs = availableUTC.getTime() - now.getTime();
+      let etaStr: string;
+      if (diffMs > 0) {
+        const hours = Math.floor(diffMs / 3600000);
+        const mins = Math.floor((diffMs % 3600000) / 60000);
+        etaStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+      } else {
+        etaStr = "curând";
+      }
+
+      setAnalysisNotAvailable({
+        message: `Analiza pentru acest meci va fi disponibilă pe ${d.toString().padStart(2, "0")}.${m.toString().padStart(2, "0")}.${y} după sincronizarea zilnică (~10:00).`,
+        eta: etaStr,
+        availableAt: availableUTC.toISOString(),
+      });
+      return;
+    }
 
     setAnalysisLoading(true);
     isAnalyzingRef.current = true;
 
-    const matchDate = selectedDate || new Date().toISOString().slice(0, 10);
     const matchKey = buildMatchKey(
       selectedSport,
       fixture.league_name || "Unknown",
@@ -269,10 +309,18 @@ export default function Dashboard() {
       setAnalysis(result);
       await refreshSubscription(true);
     } catch (e: any) {
-      if (e.isQuotaError && e.resetAt) {
+      if (e.isNotAvailable) {
+        setAnalysisNotAvailable({
+          message: e.message,
+          eta: e.eta || "curând",
+          availableAt: e.availableAt || "",
+        });
+      } else if (e.isQuotaError && e.resetAt) {
         setQuotaResetAt(e.resetAt);
+        setAnalysisError(e.message || "Verifică conexiunea la server.");
+      } else {
+        setAnalysisError(e.message || "Verifică conexiunea la server.");
       }
-      setAnalysisError(e.message || "Verifică conexiunea la server.");
     } finally {
       setAnalysisLoading(false);
       isAnalyzingRef.current = false;
@@ -520,6 +568,7 @@ export default function Dashboard() {
             analysisQuotaLocked={analysisQuotaExceeded && !analysis}
             analysisResetAt={(analysisQuotaExceeded && !analysis) ? (subscription.reset_at || null) : null}
             analysisQuotaMessage={(analysisQuotaExceeded && !analysis) ? `Ai atins limita zilnică de ${maxAnalyses} analize. Upgrade la un plan superior pentru analize nelimitate.` : null}
+            analysisNotAvailable={analysisNotAvailable}
           />
         </section>
 
