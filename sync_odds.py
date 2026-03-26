@@ -90,11 +90,12 @@ def sync_odds():
     conn = init_db()
     cur = conn.cursor()
 
-    # Date filter: only fetch odds for the next 2 days
+    # Date filter: only fetch odds for TODAY (09:00 Romania today → 08:59 Romania tomorrow)
+    # This ensures we only spend API credits on matches we can actually analyze today.
     now_utc = datetime.now(timezone.utc)
     commence_from = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-    commence_to = (now_utc + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    print(f"📅 Filtrez cote doar pentru perioada: {commence_from} → {commence_to}")
+    commence_to = (now_utc + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"📅 Filtrez cote doar pentru AZI: {commence_from} → {commence_to}")
 
     # Only fetch odds for leagues that actually have events in the DB
     try:
