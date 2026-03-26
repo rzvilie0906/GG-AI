@@ -78,8 +78,9 @@ def init_db():
 
 # ── Credit budget ──────────────────────────────────────────────
 # 2000 credits/month (4 keys × 500) ÷ 31 days ≈ 64 credits/day.
-# We cap each sync at 65 credits to stay safely within budget.
-DAILY_CREDIT_BUDGET = 65
+# Soccer uses 4cr (h2h+totals+spreads+btts), others 3cr, tennis 2cr.
+# We cap each sync at 80 credits to stay safely within budget.
+DAILY_CREDIT_BUDGET = 80
 MAX_TENNIS_TOURNAMENTS = 3
 
 def sync_odds():
@@ -121,11 +122,16 @@ def sync_odds():
             continue
 
         # Smart market selection per sport:
-        # Tennis: h2h + totals = 2 credits (no spreads in tennis)
-        # Soccer/Basketball/Hockey/Baseball: h2h + totals + spreads = 3 credits
+        # Soccer: h2h + totals + spreads + btts = 4 credits (BTTS = GG/NGG, most popular bet)
+        # Basketball/Hockey/Baseball: h2h + totals + spreads = 3 credits
+        # Tennis: h2h + totals = 2 credits (no spreads/btts in tennis)
         regions = "eu"
-        markets = "h2h,totals,spreads"
-        call_cost = 3
+        if odds_key.startswith("soccer_"):
+            markets = "h2h,totals,spreads,btts"
+            call_cost = 4
+        else:
+            markets = "h2h,totals,spreads"
+            call_cost = 3
 
         # Check budget before making the call
         if credits_used + call_cost > DAILY_CREDIT_BUDGET:
