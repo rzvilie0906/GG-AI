@@ -14,6 +14,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut as firebaseSignOut,
   sendEmailVerification,
   sendPasswordResetEmail,
@@ -152,6 +154,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setFirebaseTokenGetter(async () => "mock-firebase-token");
       return;
     }
+
+    // Handle Google redirect result (mobile flow)
+    getRedirectResult(auth).then(async (result) => {
+      if (result?.user) {
+        try {
+          const token = await result.user.getIdToken();
+          await fetch(`${API_BASE}/api/auth/register`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              uid: result.user.uid,
+              email: result.user.email,
+              provider: "google",
+            }),
+          });
+        } catch (e) {
+          console.error("Failed to register redirect user:", e);
+        }
+      }
+    }).catch(() => {});
+
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
@@ -212,7 +238,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async (): Promise<{ needsProfile: boolean }> => {
-    const cred = await signInWithPopup(auth, googleProvider);
+    let cred;
+    try {
+      cred = await signInWithPopup(auth, googleProvider);
+    } catch (popupErr: unknown) {
+      const code = (popupErr as { code?: string })?.code;
+      // If popup blocked/failed on mobile, use redirect flow
+      if (
+        code === "auth/popup-blocked" ||
+        code === "auth/popup-closed-by-user" ||
+        code === "auth/cancelled-popup-request" ||
+        code === "auth/internal-error"
+      ) {
+        await signInWithRedirect(auth, googleProvider);
+        return { needsProfile: false }; // page will reload after redirect
+      }
+      throw popupErr;
+    }
     // Register/update user in backend
     let needsProfile = false;
     try {

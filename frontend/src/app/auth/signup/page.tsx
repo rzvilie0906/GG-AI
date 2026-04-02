@@ -145,8 +145,12 @@ function SignUpForm() {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("auth/popup-closed-by-user")) {
+      const code = (err as { code?: string })?.code;
+      console.error("Google sign-in error:", code, msg);
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
         setError("");
+      } else if (code === "auth/unauthorized-domain") {
+        setError("Domeniul nu este autorizat în Firebase. Contactează suportul.");
       } else {
         setError("Eroare la autentificarea cu Google.");
       }
