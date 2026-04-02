@@ -123,14 +123,13 @@ function SignInForm() {
 
     setLoading(true);
     try {
-      const captchaToken = await executeRecaptcha("google_signin");
-      if (!captchaToken) {
-        setError("Verificarea CAPTCHA a eșuat. Încearcă din nou.");
-        setLoading(false);
-        return;
-      }
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+      // Open Google popup FIRST (must be direct user gesture for mobile)
       const result = await signInWithGoogle();
+      // Run reCAPTCHA after (non-blocking)
+      if (executeRecaptcha) {
+        await executeRecaptcha("google_signin").catch(() => {});
+      }
       // Creează token de remember pe backend (prin proxy Next.js)
       try {
         const fbToken = await auth.currentUser?.getIdToken();

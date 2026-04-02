@@ -119,20 +119,15 @@ function SignUpForm() {
       setError("Trebuie să accepți termenii și condițiile și politica de confidențialitate.");
       return;
     }
-    if (!executeRecaptcha) {
-      setError("Verificarea CAPTCHA nu este disponibilă. Reîncarcă pagina.");
-      return;
-    }
 
     setLoading(true);
     try {
-      const captchaToken = await executeRecaptcha("google_signup");
-      if (!captchaToken) {
-        setError("Verificarea CAPTCHA a eșuat. Încearcă din nou.");
-        setLoading(false);
-        return;
-      }
+      // Open Google popup FIRST (must be direct user gesture for mobile)
       const result = await signInWithGoogle();
+      // Run reCAPTCHA after (non-blocking)
+      if (executeRecaptcha) {
+        await executeRecaptcha("google_signup").catch(() => {});
+      }
       if (result.needsProfile) {
         const params = new URLSearchParams();
         params.set("redirect", priceId ? `/pricing?priceId=${priceId}` : "/dashboard");
