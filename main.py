@@ -638,6 +638,16 @@ def get_real_live_data(sport: str, event_id: str, league_key: str, home_team: st
         
     return report
 
+@app.get("/")
+def root():
+    return {
+        "app": "GG-AI Sports Betting Analysis API",
+        "status": "running",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
+
 @app.get("/health")
 def health(): return {"ok": True}
 
