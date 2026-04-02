@@ -3,24 +3,25 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useAuth } from "@/lib/AuthContext";
 import "./landing.css";
 
-// ── Price IDs from env ──
-const PRICE_WEEKLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_WEEKLY || "";
-const PRICE_PRO_MONTHLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY || "";
-const PRICE_PRO_YEARLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO_YEARLY || "";
-const PRICE_ELITE_MONTHLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_ELITE_MONTHLY || "";
-const PRICE_ELITE_YEARLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_ELITE_YEARLY || "";
+const PricingSection = dynamic(() => import("@/components/PricingSection"), {
+  loading: () => <div style={{ minHeight: 600 }} />,
+});
+const ComparisonTable = dynamic(() => import("@/components/ComparisonTable"), {
+  loading: () => <div style={{ minHeight: 400 }} />,
+});
+const FAQSection = dynamic(() => import("@/components/FAQSection"), {
+  loading: () => <div style={{ minHeight: 500 }} />,
+});
 
 export default function LandingPage() {
   const { user, subscription, signOut } = useAuth();
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [proAnnual, setProAnnual] = useState(false);
-  const [eliteAnnual, setEliteAnnual] = useState(false);
-  const [faqOpen, setFaqOpen] = useState<number | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -49,15 +50,14 @@ export default function LandingPage() {
       },
       { threshold: 0.1, rootMargin: "0px 0px -60px 0px" }
     );
-    document.querySelectorAll(".fade-in").forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+    function observeAll() {
+      document.querySelectorAll(".fade-in:not(.visible)").forEach((el) => observer.observe(el));
+    }
+    observeAll();
+    const mutation = new MutationObserver(observeAll);
+    mutation.observe(document.body, { childList: true, subtree: true });
+    return () => { observer.disconnect(); mutation.disconnect(); };
   }, []);
-
-  function checkoutLink(priceId: string) {
-    if (user && subscription?.status === "active") return "/dashboard";
-    if (user) return `/pricing?priceId=${priceId}`;
-    return `/auth/signin?priceId=${priceId}`;
-  }
 
   const isLoggedIn = !!user;
   const isActive = subscription?.status === "active";
@@ -325,134 +325,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══ PRICING ═══ */}
-      <section className="lp-section fade-in" id="preturi">
-        <div className="lp-container">
-          <div className="lp-section-header">
-            <span className="lp-section-badge lp-section-badge-gold">💰 Prețuri</span>
-            <h2 className="lp-section-title">Alege planul potrivit</h2>
-            <p className="lp-section-sub">Fără contracte pe termen lung. Anulezi oricând.</p>
-          </div>
-          <div className="lp-pricing-grid">
-            {/* Săptămânal */}
-            <div className="lp-pricing-card">
-              <div className="lp-pricing-card-inner">
-                <div className="lp-pricing-header"><h3>Săptămânal</h3><p>Ideal pentru a testa platforma</p></div>
-                <div className="lp-pricing-price">
-                  <span className="lp-price-amount">€14<span className="lp-price-decimals">.99</span></span>
-                  <span className="lp-price-period">/săptămână</span>
-                </div>
-                <Link href={checkoutLink(PRICE_WEEKLY)} className="lp-btn lp-btn-outline lp-btn-block">Activează Săptămânal</Link>
-                <div className="lp-pricing-divider" />
-                <ul className="lp-pricing-features">
-                  <li><span className="lp-check">✓</span> 4 bilete zilnice (mixt, fotbal, baschet, hochei)</li>
-                  <li><span className="lp-check">✓</span> Maxim 7 analize meciuri / zi</li>
-                  <li><span className="lp-check">✓</span> Pariu Principal + Secundar</li>
-                  <li><span className="lp-check">✓</span> Interval de cote ajustat</li>
-                  <li><span className="lp-check">✓</span> Calendar meciuri +7 zile</li>
-                  <li><span className="lp-x-mark">✗</span> Fără Analizor Risc Bilet</li>
-                </ul>
-              </div>
-            </div>
+      <PricingSection isLoggedIn={isLoggedIn} isActive={isActive} />
 
-            {/* Pro */}
-            <div className="lp-pricing-card lp-pricing-card-popular">
-              <div className="lp-popular-ribbon">FAVORITUL PUBLICULUI</div>
-              <div className="lp-pricing-card-inner">
-                <div className="lp-pricing-header"><h3>Pro</h3><p>Acces complet cu analiză nelimitată de meciuri</p></div>
-                <div className="lp-pricing-toggle">
-                  <button className={!proAnnual ? "active" : ""} onClick={() => setProAnnual(false)}>Lunar</button>
-                  <button className={proAnnual ? "active" : ""} onClick={() => setProAnnual(true)}>Anual</button>
-                </div>
-                <div className="lp-pricing-price">
-                  <span className="lp-price-amount">€{proAnnual ? "399" : "39"}<span className="lp-price-decimals">.99</span></span>
-                  <span className="lp-price-period">/{proAnnual ? "an" : "lună"}</span>
-                </div>
-                {proAnnual && <div className="lp-pricing-save">Economisești 80€ pe an</div>}
-                <Link href={checkoutLink(proAnnual ? PRICE_PRO_YEARLY : PRICE_PRO_MONTHLY)} className="lp-btn lp-btn-primary lp-btn-block">Activează Pro</Link>
-                <div className="lp-pricing-divider" />
-                <ul className="lp-pricing-features">
-                  <li><span className="lp-check lp-check-gold">★</span> 4 bilete zilnice (mixt, fotbal, baschet, hochei)</li>
-                  <li><span className="lp-check lp-check-gold">★</span> Analize meciuri nelimitate</li>
-                  <li><span className="lp-check lp-check-gold">★</span> Analizor Risc Bilet (maximum 7 bilete/zi)</li>
-                  <li><span className="lp-check lp-check-gold">★</span> Pariu Principal + Secundar</li>
-                  <li><span className="lp-check lp-check-gold">★</span> Scoring premium & explicații detaliate</li>
-                  <li><span className="lp-check lp-check-gold">★</span> Calendar meciuri +7 zile</li>
-                  <li><span className="lp-check lp-check-gold">★</span> Anulezi oricând — fără obligații</li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Elite */}
-            <div className="lp-pricing-card lp-pricing-card-best">
-              <div className="lp-best-ribbon">CEL MAI BUN</div>
-              <div className="lp-pricing-card-inner">
-                <div className="lp-pricing-header"><h3>Elite</h3><p>Fără limite — pentru pariorii serioși</p></div>
-                <div className="lp-pricing-toggle">
-                  <button className={!eliteAnnual ? "active" : ""} onClick={() => setEliteAnnual(false)}>Lunar</button>
-                  <button className={eliteAnnual ? "active" : ""} onClick={() => setEliteAnnual(true)}>Anual</button>
-                </div>
-                <div className="lp-pricing-price">
-                  <span className="lp-price-amount">€{eliteAnnual ? "999" : "99"}<span className="lp-price-decimals">.99</span></span>
-                  <span className="lp-price-period">/{eliteAnnual ? "an" : "lună"}</span>
-                </div>
-                {eliteAnnual && <div className="lp-pricing-save">Economisești 200€ pe an</div>}
-                <Link href={checkoutLink(eliteAnnual ? PRICE_ELITE_YEARLY : PRICE_ELITE_MONTHLY)} className="lp-btn lp-btn-accent lp-btn-block">Activează Elite</Link>
-                <div className="lp-pricing-divider" />
-                <ul className="lp-pricing-features">
-                  <li><span className="lp-check lp-check-diamond">💎</span> Tot ce include Pro</li>
-                  <li><span className="lp-check lp-check-diamond">💎</span> Analize meciuri nelimitate</li>
-                  <li><span className="lp-check lp-check-diamond">💎</span> Analizor Risc Bilet — nelimitat</li>
-                  <li><span className="lp-check lp-check-diamond">💎</span> Prioritate maximă la procesare</li>
-                  <li><span className="lp-check lp-check-diamond">💎</span> Urmărire avansată a cotelor</li>
-                  <li><span className="lp-check lp-check-diamond">💎</span> Suport prioritar 24/7</li>
-                  <li><span className="lp-check lp-check-diamond">💎</span> Anulezi oricând — fără obligații</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══ TABEL COMPARATIV ═══ */}
-      <section className="lp-section lp-section-dark fade-in" id="comparatie">
-        <div className="lp-container">
-          <div className="lp-section-header">
-            <span className="lp-section-badge">📋 Comparație</span>
-            <h2 className="lp-section-title">GG-AI vs. Metoda Tradițională</h2>
-            <p className="lp-section-sub">Vezi diferența clară între a paria pe instinct și a folosi inteligența artificială.</p>
-          </div>
-          <div className="lp-comparison-table-wrap">
-            <table className="lp-comparison-table">
-              <thead>
-                <tr>
-                  <th>Funcționalitate</th>
-                  <th>Pariuri Tradiționale</th>
-                  <th className="lp-highlight-col">GG-AI PRO</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { feat: "Analiză de meciuri", trad: "Manuală, pe instinct", ai: "AI automat + date live" },
-                  { feat: "Cote ajustate", trad: "Neverificate", ai: "Intervale de cote corecte" },
-                  { feat: "Formă recentă & H2H", trad: "Căuți manual", ai: "Incluse automat" },
-                  { feat: "Accidentări & Absențe", trad: "Eventual din știri", ai: "Date ESPN în timp real" },
-                  { feat: "Bilete generate zilnic", trad: "Le faci singur", ai: "4 bilete/zi auto" },
-                  { feat: "Evaluare risc bilet", trad: "Bănuieli", ai: "Scor AI + verdict" },
-                  { feat: "Multi-sport", trad: "De obicei un sport", ai: "Fotbal + Baschet + Hochei + Tenis + Baseball" },
-                  { feat: "Probabilități model", trad: "Inexistente", ai: "Prob. AI per pariu" },
-                ].map((row, i) => (
-                  <tr key={i}>
-                    <td>{row.feat}</td>
-                    <td><span className="lp-table-x">✗</span> {row.trad}</td>
-                    <td className="lp-highlight-col"><span className="lp-table-check">✓</span> {row.ai}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+      <ComparisonTable />
 
       {/* ═══ SECURITATE ═══ */}
       <section className="lp-section fade-in">
@@ -479,76 +354,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══ FAQ ═══ */}
-      <section className="lp-section lp-section-dark fade-in" id="faq">
-        <div className="lp-container lp-container-narrow">
-          <div className="lp-section-header">
-            <span className="lp-section-badge lp-section-badge-purple">❓ Întrebări</span>
-            <h2 className="lp-section-title">Întrebări frecvente</h2>
-            <p className="lp-section-sub">Tot ce trebuie să știi despre GG-AI înainte de a începe.</p>
-          </div>
-          <div className="lp-faq-list">
-            {[
-              {
-                q: "Ce sporturi acoperă GG-AI?",
-                a: "GG-AI analizează zilnic meciuri din 5 sporturi majore: fotbal (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League și multe altele), baschet (NBA, EuroLeague), hochei (NHL), tenis (ATP, WTA, Grand Slam) și baseball (MLB). Motorul AI generează 4 bilete zilnice — mixt (toate sporturile combinate), fotbal, baschet și hochei — selectând meciuri cu cote sub-evaluate pe baza analizei statistice avansate."
-              },
-              {
-                q: "Cum sunt generate biletele zilnice?",
-                a: "Procesul este complet automatizat. Zilnic la ora 09:00, scheduler-ul preia meciurile programate pe următoarele 7 zile și cotele de la bookmakers pe +2 zile prin API-uri specializate (ESPN pentru date statistice, The Odds API pentru cotele bookmaker-ilor). Apoi, GPT-4o analizează fiecare meci potențial — formă recentă, clasament, H2H, accidentări, condiții meteorologice — și selectează 2–4 meciuri cu cele mai bune value bets. Se generează 4 bilete structurate: mixt, fotbal, baschet și hochei, fiecare cu pariu principal, pariu secundar, interval de cote corecte și explicații detaliate. Biletele sunt disponibile în dashboard de la ora 10:00."
-              },
-              {
-                q: "Ce include analiza fiecărui meci?",
-                a: "Fiecare analiză AI conține: un pariu principal (recomandarea #1 cu probabilitatea cea mai mare de succes), un pariu secundar (alternativă cu raport risc/câștig diferit), intervale de cote corecte (minim și maxim la care merită plasat pariul), probabilitatea estimată de AI (procentul de probabilitate calculat de model), un rating de risc (etichetă Riscant sau Bun), un scor/notă de încredere de la 1 la 10, și o explicație detaliată care descrie logica din spatele predicției — formă recentă, statistici H2H, absențe, factori contextuali."
-              },
-              {
-                q: "Ce este Analizorul de Risc al Biletului?",
-                a: "Analizorul de Risc este o funcție avansată disponibilă în planurile Pro și Elite. Adaugi meciurile tale pe biletul personal din dashboard, iar AI-ul evaluează întregul bilet în ansamblu — nu doar meciul individual. Primești un scor de risc total, un verdict clar (Riscant/Medie/Bun), și sfaturi despre cum să îmbunătățești biletul (de exemplu: cota e prea mare pe meciul X, consideră alternativa Y). Planul Pro permite maxim 7 verificări de bilet pe zi, iar planul Elite oferă verificări nelimitate."
-              },
-              {
-                q: "Pot anula abonamentul oricând?",
-                a: "Da, absolut. Toate cele trei planuri — Săptămânal, Pro și Elite — pot fi anulate oricând direct din secțiunea Contul meu din dashboard. Nu există obligații pe termen lung, contracte minime sau taxe de anulare. Odată anulat, vei păstra accesul complet la toate funcționalitățile până la sfârșitul perioadei de facturare curente (sfârșitul săptămânii/lunii/anului plătit). Nu se oferă rambursări pentru perioada rămasă."
-              },
-              {
-                q: "Care este diferența dintre planurile Săptămânal, Pro și Elite?",
-                a: "Săptămânal (14.99€/săptămână) — ideal pentru a testa platforma: include 4 bilete zilnice generate AI, maximum 7 analize individuale de meciuri pe zi, pariu principal + secundar, interval de cote corecte și calendar meciuri pe 7 zile. Nu include Analizorul de Risc. Pro (39.99€/lună sau 399.99€/an) — cel mai popular: include tot din Săptămânal plus analize de meciuri nelimitate, Analizor Risc Bilet (maximum 7 bilete/zi), scoring premium și explicații mai detaliate. Elite (99.99€/lună sau 999.99€/an) — fără limite absolut: include tot din Pro plus Analizor Risc Bilet nelimitat, prioritate maximă la procesare, urmărire avansată a cotelor și suport prioritar 24/7."
-              },
-              {
-                q: "Plata este sigură? Ce date stocați?",
-                a: "Da, plățile sunt 100% securizate. Folosim Stripe ca procesor de plăți — cel mai de încredere la nivel mondial, certificat PCI-DSS Level 1 (cel mai înalt standard de securitate pentru carduri). Nu stocăm niciodată datele cardului tău pe serverele noastre — nici numărul cardului, nici CVV-ul, nici data de expirare. Toate informațiile financiare rămân exclusiv la Stripe. Comunicarea între browser-ul tău și serverele noastre este criptată end-to-end cu SSL/TLS 256-bit."
-              },
-              {
-                q: "Cum se creează un cont și care sunt cerințele?",
-                a: "Te poți înregistra cu email și parolă sau direct cu contul tău Google. La înregistrarea prin email, trebuie să furnizezi numele complet și data nașterii. Trebuie să ai minimum 18 ani pentru a te înregistra — aceasta este o cerință legală pentru serviciile legate de pariuri sportive. După crearea contului, vei primi un email de verificare pe care trebuie să-l confirmi înainte de a accesa platforma. Odată verificat, poți alege un plan de abonament și accesa dashboard-ul complet."
-              },
-              {
-                q: "GG-AI garantează câștiguri?",
-                a: "Nu. Niciun sistem, algoritm sau serviciu nu poate garanta câștiguri la pariuri sportive — și oricine pretinde altfel nu este onest. GG-AI este un instrument de analiză și suport decizional care îți oferă un avantaj informațional: date statistice procesate de AI, identificarea value bets, evaluarea riscului și recomandări bazate pe probabilități. Rezultatele sportive rămân impredictibile prin natura lor. Pariurile implică risc financiar real — pariază doar sume pe care ți le poți permite să le pierzi și joacă responsabil."
-              },
-              {
-                q: "Pot accesa GG-AI de pe telefon?",
-                a: "Da. Dashboard-ul GG-AI este complet responsive, optimizat pentru telefoane, tablete și desktop. Nu este nevoie să instalezi nicio aplicație — accesezi platforma direct din browser-ul mobil. Toate funcționalitățile — bilete zilnice, analize, ticket builder, analizor de risc — funcționează identic pe orice dispozitiv."
-              },
-              {
-                q: "Când primesc biletele zilnice?",
-                a: "Meciurile sunt sincronizate și actualizate zilnic la ora 09:00 (ora României). Biletele generate de AI sunt disponibile în dashboard de la ora 10:00. Primești 4 bilete noi în fiecare zi: un bilet mixt (combinație din toate sporturile), plus bilete separate pentru fotbal, baschet și hochei. Biletele se bazează pe meciurile programate în ziua respectivă și următoarele zile."
-              },
-              {
-                q: "Ce se întâmplă dacă am probleme sau întrebări?",
-                a: "Utilizatorii cu plan Elite beneficiază de suport prioritar 24/7. Pentru toți utilizatorii, poți trimite un mesaj prin formularul de contact sau prin email. Echipa noastră răspunde de obicei în mai puțin de 24 de ore pentru problemele tehnice sau întrebări legate de cont, facturare și funcționalități."
-              },
-            ].map((item, i) => (
-              <div key={i} className={`lp-faq-item ${faqOpen === i ? "lp-faq-open" : ""}`}>
-                <button className="lp-faq-question" onClick={() => setFaqOpen(faqOpen === i ? null : i)}>
-                  <span>{item.q}</span>
-                  <svg className="lp-faq-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
-                </button>
-                <div className="lp-faq-answer"><p>{item.a}</p></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <FAQSection />
 
       {/* ═══ FINAL CTA ═══ */}
       <section className="lp-final-cta fade-in">
