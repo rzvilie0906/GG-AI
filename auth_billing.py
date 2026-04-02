@@ -32,19 +32,33 @@ from pydantic import BaseModel
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 
-_FIREBASE_CRED_PATH = os.environ.get("FIREBASE_SERVICE_ACCOUNT_KEY", "firebase-service-account.json")
-
 # Initialize Firebase Admin (only once)
 if not firebase_admin._apps:
-    if os.path.exists(_FIREBASE_CRED_PATH):
-        cred = credentials.Certificate(_FIREBASE_CRED_PATH)
-        firebase_app = firebase_admin.initialize_app(cred)
-        print(f"🔥 Firebase Admin SDK inițializat cu: {_FIREBASE_CRED_PATH}")
+    # Try to load from JSON string in environment variable (for Railway/cloud deployment)
+    firebase_json_str = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    
+    if firebase_json_str:
+        try:
+            firebase_creds_dict = json.loads(firebase_json_str)
+            cred = credentials.Certificate(firebase_creds_dict)
+            firebase_app = firebase_admin.initialize_app(cred)
+            print("🔥 Firebase Admin SDK inițializat din variabilă de mediu (JSON)")
+        except json.JSONDecodeError as e:
+            firebase_app = None
+            print(f"⚠️ Firebase Admin: Eroare la parsarea JSON-ului: {e}")
     else:
-        # Allow running without Firebase for local dev (mock mode)
-        firebase_app = None
-        print(f"⚠️ Firebase Admin: Fișierul {_FIREBASE_CRED_PATH} nu a fost găsit. "
-              f"Auth endpoints vor funcționa numai în mod mock.")
+        # Fall back to file path (for local development)
+        _FIREBASE_CRED_PATH = os.environ.get("FIREBASE_SERVICE_ACCOUNT_KEY", "firebase-service-account.json")
+        
+        if os.path.exists(_FIREBASE_CRED_PATH):
+            cred = credentials.Certificate(_FIREBASE_CRED_PATH)
+            firebase_app = firebase_admin.initialize_app(cred)
+            print(f"🔥 Firebase Admin SDK inițializat cu: {_FIREBASE_CRED_PATH}")
+        else:
+            # Allow running without Firebase for local dev (mock mode)
+            firebase_app = None
+            print(f"⚠️ Firebase Admin: Fișierul {_FIREBASE_CRED_PATH} nu a fost găsit. "
+                  f"Auth endpoints vor funcționa numai în mod mock.")
 else:
     firebase_app = firebase_admin.get_app()
 
