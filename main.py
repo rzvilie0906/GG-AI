@@ -696,9 +696,21 @@ def fixtures(sport: Sport = Query(...), d: date = Query(..., alias="date"), leag
     rows = cur.fetchall()
     conn.close()
     
+    now_utc = datetime.utcnow()
     result = []
     for r in rows:
         status_norm = _normalize_status(r["status"])
+        # Time-based override: if DB still says upcoming but the match has started, infer live/finished
+        if status_norm == "upcoming" and r["start_time_utc"]:
+            try:
+                start_dt = datetime.fromisoformat(r["start_time_utc"].replace("Z", "+00:00")).replace(tzinfo=None)
+                hours_passed = (now_utc - start_dt).total_seconds() / 3600
+                if hours_passed > 3.5:
+                    status_norm = "finished"
+                elif hours_passed > 0:
+                    status_norm = "live"
+            except Exception:
+                pass
         if tab != "all" and status_norm != tab:
             continue
         result.append({
