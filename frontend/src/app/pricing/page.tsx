@@ -301,10 +301,21 @@ function PricingContent() {
                   </div>
                 )}
 
-                <div className="mt-4 mb-6">
+                <div className="mt-4 mb-2">
                   <span className="text-4xl font-black tracking-tight">{plan.price}</span>
                   <span className="text-sm text-slate-500 ml-1">{plan.period}</span>
                 </div>
+
+                {plan.id === "pro" && proAnnual && (
+                  <div className="mb-4 inline-block px-4 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold animate-[fadeIn_0.3s_ease-out]">
+                    🎉 Economisești 80€ — doar 33.33€/lună!
+                  </div>
+                )}
+                {plan.id === "elite" && eliteAnnual && (
+                  <div className="mb-4 inline-block px-4 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold animate-[fadeIn_0.3s_ease-out]">
+                    🎉 Economisești 200€ — doar 83.33€/lună!
+                  </div>
+                )}
 
                 {isUpgradeMode && currentPlan === plan.id ? (
                   <div className="w-full py-3 rounded-xl font-semibold text-sm text-center border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
