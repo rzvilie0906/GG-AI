@@ -67,7 +67,7 @@ export default function PricingSection({ isLoggedIn, isActive }: PricingSectionP
                 <span className="lp-price-amount">€{proAnnual ? "399" : "39"}<span className="lp-price-decimals">.99</span></span>
                 <span className="lp-price-period">/{proAnnual ? "an" : "lună"}</span>
               </div>
-              {proAnnual && <div className="lp-pricing-save">Economisești 80€ pe an</div>}
+              {proAnnual && <div className="lp-pricing-save">🎉 Economisești 80€ — doar 33.33€/lună!</div>}
               <Link href={checkoutLink(proAnnual ? PRICE_PRO_YEARLY : PRICE_PRO_MONTHLY)} className="lp-btn lp-btn-primary lp-btn-block">Activează Pro</Link>
               <div className="lp-pricing-divider" />
               <ul className="lp-pricing-features">
@@ -95,7 +95,7 @@ export default function PricingSection({ isLoggedIn, isActive }: PricingSectionP
                 <span className="lp-price-amount">€{eliteAnnual ? "999" : "99"}<span className="lp-price-decimals">.99</span></span>
                 <span className="lp-price-period">/{eliteAnnual ? "an" : "lună"}</span>
               </div>
-              {eliteAnnual && <div className="lp-pricing-save">Economisești 200€ pe an</div>}
+              {eliteAnnual && <div className="lp-pricing-save">🎉 Economisești 200€ — doar 83.33€/lună!</div>}
               <Link href={checkoutLink(eliteAnnual ? PRICE_ELITE_YEARLY : PRICE_ELITE_MONTHLY)} className="lp-btn lp-btn-accent lp-btn-block">Activează Elite</Link>
               <div className="lp-pricing-divider" />
               <ul className="lp-pricing-features">

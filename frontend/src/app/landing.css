@@ -295,9 +295,14 @@
 .lp-price-decimals { font-size: 24px; }
 .lp-price-period { font-size: 14px; color: var(--lp-text-muted); margin-left: 4px; }
 .lp-pricing-save {
-  display: inline-block; padding: 4px 12px; border-radius: 100px;
-  background: rgba(52,211,153,0.1); color: #34d399;
-  font-size: 12px; font-weight: 600; margin-bottom: 16px;
+  display: inline-block; padding: 6px 16px; border-radius: 100px;
+  background: rgba(52,211,153,0.12); color: #34d399;
+  font-size: 13px; font-weight: 700; margin: 12px 0 16px;
+  animation: lp-save-pop 0.3s ease-out;
+}
+@keyframes lp-save-pop {
+  0% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
 }
 .lp-pricing-divider { height: 1px; background: var(--lp-border); margin: 24px 0; }
 .lp-pricing-features { list-style: none; padding: 0; margin: 0; }
