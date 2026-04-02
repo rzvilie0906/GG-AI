@@ -61,6 +61,7 @@ export interface DailyTicketData {
   ticket: DailyPick[];
   date?: string;
   total_odds?: string | number;
+  message?: string;
 }
 
 export interface TicketPick {
