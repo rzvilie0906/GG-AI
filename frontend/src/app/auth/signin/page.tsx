@@ -8,6 +8,7 @@ import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import { Suspense } from "react";
 import { GoogleReCaptchaProvider, useGoogleReCaptcha } from "react-google-recaptcha-v3";
+import { hasFullCookieConsent } from "@/components/CookieConsent";
 
 const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
 
@@ -361,12 +362,16 @@ function SignInForm() {
               <input
                 type="checkbox"
                 id="rememberMe"
-                checked={rememberMe}
+                checked={rememberMe && hasFullCookieConsent()}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer accent-[var(--primary)]"
+                disabled={!hasFullCookieConsent()}
+                className="h-4 w-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer accent-[var(--primary)] disabled:opacity-40 disabled:cursor-not-allowed"
               />
-              <label htmlFor="rememberMe" className="text-sm text-text-secondary cursor-pointer select-none">
+              <label htmlFor="rememberMe" className={`text-sm cursor-pointer select-none ${hasFullCookieConsent() ? "text-text-secondary" : "text-text-muted"}`}>
                 Rămâi autentificat
+                {!hasFullCookieConsent() && (
+                  <span className="text-xs text-text-muted ml-1">(necesită acceptarea cookie-urilor)</span>
+                )}
               </label>
             </div>
 

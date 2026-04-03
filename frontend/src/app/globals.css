@@ -78,6 +78,15 @@ body {
   color: #fff;
 }
 
+/* ── Cookie consent slide-up ── */
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* ── Cards ── */
 .card {
   background: var(--bg-card);
