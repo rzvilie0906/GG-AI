@@ -88,8 +88,11 @@ export default function Dashboard() {
   const isAnalyzingRef = useRef(false);
 
   // Fetch user profile for display name + check profile completion
+  // Wait for subscription to be loaded first to avoid competing redirects
   useEffect(() => {
-    if (!user) return;
+    if (!user || subLoading) return;
+    // Don't check profile if subscription isn't active (route protection handles that redirect)
+    if (!subscription || subscription.status !== "active") return;
     (async () => {
       try {
         const token = await getIdToken();
@@ -100,7 +103,7 @@ export default function Dashboard() {
         if (res.ok) {
           const data = await res.json();
           setUserName(data.full_name || null);
-          // Redirect Google users who haven't completed their profile
+          // Redirect users who haven't completed their profile
           if (!data.full_name || !data.date_of_birth) {
             router.replace("/auth/complete-profile?redirect=/dashboard");
             return;
@@ -108,7 +111,7 @@ export default function Dashboard() {
         }
       } catch {}
     })();
-  }, [user, getIdToken, router]);
+  }, [user, subscription, subLoading, getIdToken, router]);
 
   const handleSignOut = async () => {
     window.location.href = "/";

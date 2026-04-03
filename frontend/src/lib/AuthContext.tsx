@@ -218,6 +218,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await firebaseSignOut(auth);
       throw new Error("EMAIL_NOT_VERIFIED");
     }
+    // Ensure user record exists in backend (handles DB resets after Railway redeploy)
+    try {
+      const token = await cred.user.getIdToken();
+      await fetch(`${API_BASE}/api/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          uid: cred.user.uid,
+          email: cred.user.email,
+          provider: "email",
+        }),
+      });
+    } catch (e) {
+      console.error("Failed to ensure user in backend:", e);
+    }
   };
 
   const signUp = async (email: string, password: string, fullName?: string, dateOfBirth?: string) => {

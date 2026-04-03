@@ -445,6 +445,38 @@ async def verify_firebase_token(authorization: Optional[str] = Header(default=No
 def get_user_subscription(uid: str) -> dict:
     """Get subscription info with tier limits for a user."""
     user = _get_user(uid)
+
+    # ── Whitelist: Permanent Elite Access ──────────────────────────────────────
+    # Runs BEFORE the user-not-found check so whitelisted users work even
+    # after a Railway redeploy that wipes the SQLite DB.
+    whitelist_env = os.environ.get("WHITELISTED_EMAILS", "")
+    whitelisted_emails = {e.strip().lower() for e in whitelist_env.split(",") if e.strip()}
+
+    if whitelisted_emails:
+        # Get email from local DB, or fall back to Firebase Auth
+        user_email = ""
+        if user:
+            user_email = user.get("email", "").lower()
+        elif firebase_app:
+            try:
+                fb_user = firebase_auth.get_user(uid)
+                user_email = (fb_user.email or "").lower()
+                # Auto-create user record so future lookups succeed
+                if user_email:
+                    _upsert_user(uid, user_email, "firebase")
+                    user = _get_user(uid)
+            except Exception as e:
+                print(f"⚠️ [Whitelist] Could not look up Firebase user {uid}: {e}", flush=True)
+
+        if user_email and user_email in whitelisted_emails:
+            return {
+                "plan": "elite",
+                "status": "active",
+                "current_period_end": (datetime.now(timezone.utc) + timedelta(days=365*10)).isoformat(),
+                "tier_limits": TIER_LIMITS["elite"],
+            }
+    # ───────────────────────────────────────────────────────────────────────────
+
     if not user:
         return {
             "plan": None,
@@ -452,22 +484,6 @@ def get_user_subscription(uid: str) -> dict:
             "current_period_end": None,
             "tier_limits": None,
         }
-
-    # ── Whitelist: Permanent Elite Access ──────────────────────────────────────
-    # Add emails to WHITELISTED_EMAILS env var (comma-separated) on Railway
-    # Never hardcode emails here — they would be visible on GitHub
-    whitelist_env = os.environ.get("WHITELISTED_EMAILS", "")
-    whitelisted_emails = {e.strip().lower() for e in whitelist_env.split(",") if e.strip()}
-    
-    user_email = user.get("email", "").lower()
-    if user_email in whitelisted_emails:
-        return {
-            "plan": "elite",
-            "status": "active",
-            "current_period_end": (datetime.now(timezone.utc) + timedelta(days=365*10)).isoformat(),  # 10 years from now
-            "tier_limits": TIER_LIMITS["elite"],
-        }
-    # ───────────────────────────────────────────────────────────────────────────
 
     plan = user.get("plan")
     status = user.get("status", "inactive")
