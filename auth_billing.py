@@ -453,6 +453,22 @@ def get_user_subscription(uid: str) -> dict:
             "tier_limits": None,
         }
 
+    # ── Whitelist: Permanent Elite Access ──────────────────────────────────────
+    # Add emails to WHITELISTED_EMAILS env var (comma-separated) on Railway
+    # Never hardcode emails here — they would be visible on GitHub
+    whitelist_env = os.environ.get("WHITELISTED_EMAILS", "")
+    whitelisted_emails = {e.strip().lower() for e in whitelist_env.split(",") if e.strip()}
+    
+    user_email = user.get("email", "").lower()
+    if user_email in whitelisted_emails:
+        return {
+            "plan": "elite",
+            "status": "active",
+            "current_period_end": (datetime.now(timezone.utc) + timedelta(days=365*10)).isoformat(),  # 10 years from now
+            "tier_limits": TIER_LIMITS["elite"],
+        }
+    # ───────────────────────────────────────────────────────────────────────────
+
     plan = user.get("plan")
     status = user.get("status", "inactive")
 
