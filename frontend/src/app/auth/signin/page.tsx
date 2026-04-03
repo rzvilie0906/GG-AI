@@ -44,18 +44,20 @@ function SignInForm() {
 
   // Redirect already-authenticated users away from signin page
   // (safety net for users who land here while already logged in)
+  // Skip if this is a redirect return (getRedirectResult in AuthContext handles that)
   useEffect(() => {
     if (authLoading || signingInRef.current) return;
     if (user && user.emailVerified) {
-      const doRedirect = async () => {
+      // Don't fight with getRedirectResult — wait a tick for it to finish
+      const timer = setTimeout(async () => {
         await ensureSessionCookie(false);
         if (priceId) {
           router.replace(`/pricing?priceId=${priceId}`);
         } else {
           router.replace(redirect);
         }
-      };
-      doRedirect();
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [user, authLoading, router, redirect, priceId]);
 

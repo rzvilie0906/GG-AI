@@ -156,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // Handle Google redirect result (mobile flow)
+    // After signInWithRedirect, the page reloads and we process the result here.
     getRedirectResult(auth).then(async (result) => {
       if (result?.user) {
         try {
@@ -182,11 +183,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
             body: JSON.stringify({ remember: false }),
           });
+          // Navigate explicitly — full page load so middleware sees the fresh cookie
+          window.location.href = "/dashboard";
         } catch (e) {
           console.error("Failed to register redirect user:", e);
         }
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error("getRedirectResult error:", err);
+    });
 
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
@@ -266,15 +271,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async (): Promise<{ needsProfile: boolean }> => {
-    // Always try popup first (works on both desktop and mobile).
-    // Only fall back to redirect if the popup is actively blocked.
+    // Mobile browsers can't handle cross-origin popups properly.
+    // Use redirect on mobile — the result is handled by getRedirectResult above.
+    const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(
+      navigator.userAgent
+    );
+
+    if (isMobile) {
+      await signInWithRedirect(auth, googleProvider);
+      // Page will reload after redirect — getRedirectResult handles the rest
+      return { needsProfile: false };
+    }
+
     let cred;
     try {
       cred = await signInWithPopup(auth, googleProvider);
     } catch (popupErr: unknown) {
       const code = (popupErr as { code?: string })?.code;
-      // Fallback to redirect if popup blocked or internal error
-      if (code === "auth/popup-blocked" || code === "auth/internal-error") {
+      // Fallback to redirect if popup blocked, closed prematurely, or internal error
+      if (
+        code === "auth/popup-blocked" ||
+        code === "auth/popup-closed-by-user" ||
+        code === "auth/internal-error"
+      ) {
         await signInWithRedirect(auth, googleProvider);
         return { needsProfile: false };
       }
