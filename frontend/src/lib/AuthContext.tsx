@@ -243,13 +243,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cred = await signInWithPopup(auth, googleProvider);
     } catch (popupErr: unknown) {
       const code = (popupErr as { code?: string })?.code;
-      // If popup blocked/failed on mobile, use redirect flow
-      if (
-        code === "auth/popup-blocked" ||
-        code === "auth/popup-closed-by-user" ||
-        code === "auth/cancelled-popup-request" ||
-        code === "auth/internal-error"
-      ) {
+      // Only use redirect flow if popup was truly blocked (e.g. mobile browser)
+      if (code === "auth/popup-blocked") {
         await signInWithRedirect(auth, googleProvider);
         return { needsProfile: false }; // page will reload after redirect
       }

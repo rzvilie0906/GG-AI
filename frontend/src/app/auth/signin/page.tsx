@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import { sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
@@ -12,6 +12,25 @@ import { hasFullCookieConsent } from "@/components/CookieConsent";
 
 const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
 
+/** Helper: set the session cookie via our API route and return true on success */
+async function ensureSessionCookie(remember: boolean): Promise<boolean> {
+  try {
+    const fbToken = await auth.currentUser?.getIdToken();
+    if (!fbToken) return false;
+    const res = await fetch("/api/auth/remember", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${fbToken}`,
+      },
+      body: JSON.stringify({ remember }),
+    });
+    return res.ok || res.status < 500; // cookie is set even on 4xx (our fallback)
+  } catch {
+    return false;
+  }
+}
+
 function SignInForm() {
   const { user, loading: authLoading, signIn, signInWithGoogle } = useAuth();
   const router = useRouter();
@@ -20,32 +39,23 @@ function SignInForm() {
   const priceId = searchParams.get("priceId");
   const { executeRecaptcha } = useGoogleReCaptcha();
 
+  // Ref to prevent the useEffect from racing with an active sign-in handler
+  const signingInRef = useRef(false);
+
   // Redirect already-authenticated users away from signin page
+  // (safety net for users who land here while already logged in)
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || signingInRef.current) return;
     if (user && user.emailVerified) {
-      // Ensure token cookie is set before redirecting
-      const ensureCookie = async () => {
-        try {
-          const fbToken = await auth.currentUser?.getIdToken();
-          if (fbToken) {
-            await fetch("/api/auth/remember", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${fbToken}`,
-              },
-              body: JSON.stringify({ remember: false }),
-            });
-          }
-        } catch {}
+      const doRedirect = async () => {
+        await ensureSessionCookie(false);
         if (priceId) {
           router.replace(`/pricing?priceId=${priceId}`);
         } else {
           router.replace(redirect);
         }
       };
-      ensureCookie();
+      doRedirect();
     }
   }, [user, authLoading, router, redirect, priceId]);
 
@@ -76,22 +86,8 @@ function SignInForm() {
       }
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       await signIn(email, password);
-      // Creează token de remember pe backend (prin proxy Next.js)
-      try {
-        const fbToken = await auth.currentUser?.getIdToken();
-        if (fbToken) {
-          await fetch("/api/auth/remember", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${fbToken}`,
-            },
-            body: JSON.stringify({ remember: rememberMe }),
-          });
-        }
-      } catch (e) {
-        console.error("Remember token error:", e);
-      }
+      // Set session cookie before navigating
+      await ensureSessionCookie(rememberMe);
       // If there's a priceId, go to checkout flow
       if (priceId) {
         router.push(`/pricing?priceId=${priceId}`);
@@ -146,6 +142,7 @@ function SignInForm() {
   const handleGoogleSignIn = async () => {
     setError("");
     setLoading(true);
+    signingInRef.current = true;
     try {
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       // Open Google popup FIRST (must be direct user gesture for mobile)
@@ -154,22 +151,8 @@ function SignInForm() {
       if (executeRecaptcha) {
         await executeRecaptcha("google_signin").catch(() => {});
       }
-      // Creează token de remember pe backend (prin proxy Next.js)
-      try {
-        const fbToken = await auth.currentUser?.getIdToken();
-        if (fbToken) {
-          await fetch("/api/auth/remember", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${fbToken}`,
-            },
-            body: JSON.stringify({ remember: rememberMe }),
-          });
-        }
-      } catch (e) {
-        console.error("Remember token error:", e);
-      }
+      // Set session cookie before navigating
+      await ensureSessionCookie(rememberMe);
       if (result.needsProfile) {
         const params = new URLSearchParams();
         params.set("redirect", priceId ? `/pricing?priceId=${priceId}` : redirect);
@@ -192,6 +175,7 @@ function SignInForm() {
         setError("Eroare la autentificarea cu Google.");
       }
     } finally {
+      signingInRef.current = false;
       setLoading(false);
     }
   };
