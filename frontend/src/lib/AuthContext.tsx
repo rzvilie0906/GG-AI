@@ -266,22 +266,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async (): Promise<{ needsProfile: boolean }> => {
-    // Detect mobile — use redirect flow directly (popups fail on most mobile browsers)
-    const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(
-      navigator.userAgent
-    );
-
-    if (isMobile) {
-      await signInWithRedirect(auth, googleProvider);
-      return { needsProfile: false }; // page will reload after redirect
-    }
-
+    // Always try popup first (works on both desktop and mobile).
+    // Only fall back to redirect if the popup is actively blocked.
     let cred;
     try {
       cred = await signInWithPopup(auth, googleProvider);
     } catch (popupErr: unknown) {
       const code = (popupErr as { code?: string })?.code;
-      // Fallback to redirect if popup blocked or internal error on desktop
+      // Fallback to redirect if popup blocked or internal error
       if (code === "auth/popup-blocked" || code === "auth/internal-error") {
         await signInWithRedirect(auth, googleProvider);
         return { needsProfile: false };
