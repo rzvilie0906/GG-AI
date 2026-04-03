@@ -160,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result?.user) {
         try {
           const token = await result.user.getIdToken();
+          // Register user in backend
           await fetch(`${API_BASE}/api/auth/register`, {
             method: "POST",
             headers: {
@@ -171,6 +172,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               email: result.user.email,
               provider: "google",
             }),
+          });
+          // Set session cookie so middleware allows navigation
+          await fetch("/api/auth/remember", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ remember: false }),
           });
         } catch (e) {
           console.error("Failed to register redirect user:", e);
@@ -238,15 +248,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async (): Promise<{ needsProfile: boolean }> => {
+    // Detect mobile — use redirect flow directly (popups fail on most mobile browsers)
+    const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(
+      navigator.userAgent
+    );
+
+    if (isMobile) {
+      await signInWithRedirect(auth, googleProvider);
+      return { needsProfile: false }; // page will reload after redirect
+    }
+
     let cred;
     try {
       cred = await signInWithPopup(auth, googleProvider);
     } catch (popupErr: unknown) {
       const code = (popupErr as { code?: string })?.code;
-      // Only use redirect flow if popup was truly blocked (e.g. mobile browser)
-      if (code === "auth/popup-blocked") {
+      // Fallback to redirect if popup blocked or internal error on desktop
+      if (code === "auth/popup-blocked" || code === "auth/internal-error") {
         await signInWithRedirect(auth, googleProvider);
-        return { needsProfile: false }; // page will reload after redirect
+        return { needsProfile: false };
       }
       throw popupErr;
     }
