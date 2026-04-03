@@ -115,12 +115,6 @@ function SignInForm() {
 
   const handleGoogleSignIn = async () => {
     setError("");
-
-    if (!executeRecaptcha) {
-      setError("Verificarea CAPTCHA nu este disponibilă. Reîncarcă pagina.");
-      return;
-    }
-
     setLoading(true);
     try {
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
