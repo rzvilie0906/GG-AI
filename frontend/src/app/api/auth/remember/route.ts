@@ -26,7 +26,18 @@ export async function POST(request: NextRequest) {
 
     if (!backendRes.ok) {
       const err = await backendRes.json().catch(() => ({}));
-      return NextResponse.json(err, { status: backendRes.status });
+      const errResponse = NextResponse.json(err, { status: backendRes.status });
+      // Still set token cookie so middleware doesn't block navigation
+      if (authorization) {
+        errResponse.cookies.set("token", "authenticated", {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          ...(body.remember ? { maxAge: REMEMBER_DAYS * 24 * 60 * 60 } : {}),
+        });
+      }
+      return errResponse;
     }
 
     const data = await backendRes.json();
@@ -68,9 +79,17 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch {
-    return NextResponse.json(
+    const errResponse = NextResponse.json(
       { detail: "Eroare internă la setarea sesiunii." },
       { status: 500 }
     );
+    // Still set token cookie so middleware doesn't block navigation
+    errResponse.cookies.set("token", "authenticated", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    });
+    return errResponse;
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import { sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
@@ -12,12 +12,41 @@ import { GoogleReCaptchaProvider, useGoogleReCaptcha } from "react-google-recapt
 const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
 
 function SignInForm() {
-  const { signIn, signInWithGoogle } = useAuth();
+  const { user, loading: authLoading, signIn, signInWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/dashboard";
   const priceId = searchParams.get("priceId");
   const { executeRecaptcha } = useGoogleReCaptcha();
+
+  // Redirect already-authenticated users away from signin page
+  useEffect(() => {
+    if (authLoading) return;
+    if (user && user.emailVerified) {
+      // Ensure token cookie is set before redirecting
+      const ensureCookie = async () => {
+        try {
+          const fbToken = await auth.currentUser?.getIdToken();
+          if (fbToken) {
+            await fetch("/api/auth/remember", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${fbToken}`,
+              },
+              body: JSON.stringify({ remember: false }),
+            });
+          }
+        } catch {}
+        if (priceId) {
+          router.replace(`/pricing?priceId=${priceId}`);
+        } else {
+          router.replace(redirect);
+        }
+      };
+      ensureCookie();
+    }
+  }, [user, authLoading, router, redirect, priceId]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
