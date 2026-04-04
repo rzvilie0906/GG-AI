@@ -11,8 +11,18 @@ import logging
 import hashlib
 import hmac
 import time as _time
+import unicodedata
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, Literal, Any, Dict, List
+
+def strip_accents(s: str) -> str:
+    """Remove diacritics/accents from a string for matching (Atlético → Atletico)."""
+    if not s:
+        return s
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', s)
+        if unicodedata.category(c) != 'Mn'
+    )
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, logger
 from fastapi.middleware.cors import CORSMiddleware
@@ -265,6 +275,7 @@ def _db_connect():
     conn = sqlite3.connect("sports.db", timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.create_function("strip_accents", 1, lambda s: strip_accents(s) if s else s)
     return conn
 
 def _init_db():
@@ -597,7 +608,7 @@ def get_real_live_data(sport: str, event_id: str, league_key: str, home_team: st
                     entries = d["standings"][0]["standings"]["entries"]
                     for entry in entries:
                         t_name = entry["team"]["displayName"]
-                        if home_team.lower() in t_name.lower() or away_team.lower() in t_name.lower():
+                        if strip_accents(home_team).lower() in strip_accents(t_name).lower() or strip_accents(away_team).lower() in strip_accents(t_name).lower():
                             stats = {s["name"]: s["displayValue"] for s in entry["stats"]}
                             poz = stats.get("rank", "?")
                             pct = stats.get("points", "?")
@@ -905,7 +916,7 @@ def get_api_sports_data(sport: str, home_team: str, match_date: date) -> Dict:
         r = requests.get(f"https://{host}/{path}?date={match_date}", headers=headers, timeout=10).json()
         matches = r.get("response", [])
         
-        found = next((m for m in matches if kw in (m.get("teams", {}).get("home", {}).get("name") or "").lower()), None)
+        found = next((m for m in matches if kw in strip_accents(m.get("teams", {}).get("home", {}).get("name") or "").lower()), None)
         if not found: return {}
         
         m_id = found.get("id") or found.get("fixture", {}).get("id")
@@ -990,12 +1001,12 @@ def get_premium_football_data(home_team, away_team, match_date):
         fixture_id = None
 
         ignore_words = ['club', 'team', 'real', 'city', 'united', 'sporting', 'fc', 'as', 'cf', 'athletic', 'dinamo']
-        valid_words = [w for w in home_team.split() if len(w) > 2 and w.lower() not in ignore_words]
-        home_kw = max(valid_words, key=len).lower() if valid_words else home_team.split()[0].lower()
+        valid_words = [w for w in strip_accents(home_team).split() if len(w) > 2 and w.lower() not in ignore_words]
+        home_kw = max(valid_words, key=len).lower() if valid_words else strip_accents(home_team).split()[0].lower()
         
         if r_fixtures.get("response"):
             for f in r_fixtures["response"]:
-                h_name = f["teams"]["home"]["name"].lower()
+                h_name = strip_accents(f["teams"]["home"]["name"]).lower()
                 if home_kw in h_name:
                     fixture_id = f["fixture"]["id"]
                     break
@@ -1074,7 +1085,7 @@ def get_premium_basketball_data(home_team, away_team, match_date):
         home_kw = home_team.split()[-1] 
         
         for g in r_games["response"]:
-            if home_kw.lower() in g["teams"]["home"]["name"].lower():
+            if strip_accents(home_kw).lower() in strip_accents(g["teams"]["home"]["name"]).lower():
                 game_id = g["id"]
                 home_id = g["teams"]["home"]["id"]
                 away_id = g["teams"]["away"]["id"]
@@ -1120,7 +1131,7 @@ def get_premium_hockey_data(home_team, away_team, match_date):
         home_kw = home_team.split()[-1] 
         
         for g in r_games["response"]:
-            if home_kw.lower() in g["teams"]["home"]["name"].lower():
+            if strip_accents(home_kw).lower() in strip_accents(g["teams"]["home"]["name"]).lower():
                 game_id = g["id"]
                 home_id = g["teams"]["home"]["id"]
                 away_id = g["teams"]["away"]["id"]
@@ -1168,7 +1179,7 @@ def get_premium_tennis_data(home_team, away_team, match_date):
         
         for g in r_games["response"]:
             h_name = g["teams"]["home"]["name"]
-            if home_kw.lower() in h_name.lower():
+            if strip_accents(home_kw).lower() in strip_accents(h_name).lower():
                 home_id = g["teams"]["home"]["id"]
                 away_id = g["teams"]["away"]["id"]
                 break
@@ -1199,10 +1210,11 @@ def get_premium_tennis_data(home_team, away_team, match_date):
 def get_kw(name: str, sport: str = "") -> str:
     """Extrage cuvântul cheie relevant din numele unei echipe/jucător pentru matching."""
     if not name: return ""
+    normalized = strip_accents(name)
     junk = {'fc', 'united', 'city', 'real', 'sporting', 'athletic', 'club', 'sc', 'ac', 'st', 'fcsb', 'dinamo', 'cs', 'afc', 'cf', 'as'}
-    parts = [w for w in name.replace('-', ' ').split() if len(w) > 2 and w.lower() not in junk]
+    parts = [w for w in normalized.replace('-', ' ').split() if len(w) > 2 and w.lower() not in junk]
     if not parts:
-        return name.split()[0]
+        return normalized.split()[0]
     # For tennis player names, prefer the LAST word (surname) as it's more unique
     if sport == "tennis":
         return parts[-1]
@@ -1224,7 +1236,7 @@ def get_premium_baseball_data(home_team, away_team, match_date):
         home_kw = get_kw(home_team).lower()
         
         for g in r_games["response"]:
-            if home_kw in g["teams"]["home"]["name"].lower():
+            if home_kw in strip_accents(g["teams"]["home"]["name"]).lower():
                 game_id = g["id"]
                 home_id = g["teams"]["home"]["id"]
                 away_id = g["teams"]["away"]["id"]
@@ -1369,11 +1381,11 @@ async def analyze(
         away_kw = get_kw(data.away_team, data.sport)
         odds_prefix = SPORT_TO_ODDS_PREFIX.get(data.sport, "")
         
-        # Pas 1: Căutare strictă — ambele echipe + sport corect
+        # Pas 1: Căutare strictă — ambele echipe + sport corect (accent-insensitive)
         cur.execute("""
             SELECT bookmakers_json, match_title, sport_key FROM match_odds 
-            WHERE match_title LIKE ? COLLATE NOCASE 
-            AND match_title LIKE ? COLLATE NOCASE
+            WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE 
+            AND strip_accents(match_title) LIKE ? COLLATE NOCASE
             AND sport_key LIKE ?
         """, (f"%{home_kw}%", f"%{away_kw}%", f"{odds_prefix}%"))
         odds_row = cur.fetchone()
@@ -1382,19 +1394,19 @@ async def analyze(
         if not odds_row:
             if data.sport == "tennis":
                 # For tennis, use full surname + first name to avoid cross-matching
-                home_parts = data.home_team.strip().split()
+                home_parts = strip_accents(data.home_team).strip().split()
                 if len(home_parts) >= 2:
                     cur.execute("""
                         SELECT bookmakers_json, match_title, sport_key FROM match_odds 
-                        WHERE match_title LIKE ? COLLATE NOCASE 
-                        AND match_title LIKE ? COLLATE NOCASE
+                        WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE 
+                        AND strip_accents(match_title) LIKE ? COLLATE NOCASE
                         AND sport_key LIKE ?
                     """, (f"%{home_parts[0]}%", f"%{home_parts[-1]}%", f"{odds_prefix}%"))
                     odds_row = cur.fetchone()
             else:
                 cur.execute("""
                     SELECT bookmakers_json, match_title, sport_key FROM match_odds 
-                    WHERE match_title LIKE ? COLLATE NOCASE 
+                    WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE 
                     AND sport_key LIKE ?
                 """, (f"%{home_kw}%", f"{odds_prefix}%"))
                 odds_row = cur.fetchone()
@@ -1500,11 +1512,11 @@ async def analyze_custom_ticket(
     enriched_picks = []
 
     for p in data.picks:
-        team_words = p.match.split(" vs ")[0].split()
+        team_words = strip_accents(p.match.split(" vs ")[0]).split()
         kw = team_words[0].lower()
         if len(kw) <= 3 and len(team_words) > 1:
             kw = team_words[1].lower()
-        cur.execute("SELECT analysis_json FROM saved_analyses WHERE match_key LIKE ? ORDER BY saved_at DESC LIMIT 1", (f"%{kw}%",))
+        cur.execute("SELECT analysis_json FROM saved_analyses WHERE strip_accents(match_key) LIKE ? ORDER BY saved_at DESC LIMIT 1", (f"%{kw}%",))
         row = cur.fetchone()
         
         analysis_context = ""
