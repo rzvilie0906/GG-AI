@@ -1568,6 +1568,23 @@ def admin_list_analyses(
     conn.close()
     return {"count": len(rows), "analyses": rows}
 
+@app.get("/admin/odds")
+def admin_list_odds(
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    q: Optional[str] = Query(default=None),
+):
+    """List match_odds entries. Optional ?q= to filter by match_title."""
+    require_api_key(x_api_key)
+    conn = _db_connect()
+    cur = conn.cursor()
+    if q:
+        cur.execute("SELECT match_title, sport_key, league_key, start_time FROM match_odds WHERE match_title LIKE ? ORDER BY start_time", (f"%{q}%",))
+    else:
+        cur.execute("SELECT match_title, sport_key, league_key, start_time FROM match_odds ORDER BY start_time")
+    rows = [{"match_title": r["match_title"], "sport_key": r["sport_key"], "league_key": r["league_key"], "start_time": r["start_time"]} for r in cur.fetchall()]
+    conn.close()
+    return {"count": len(rows), "odds": rows}
+
 @app.post("/analyze-ticket")
 async def analyze_custom_ticket(
     data: VerifyTicketRequest,
