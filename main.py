@@ -502,13 +502,18 @@ def _refresh_from_firestore():
                       ev.get("provider"), ev.get("provider_event_id"), ev.get("search_text")))
                 total_events += 1
 
-        # Download odds
+        # Download odds (replace all — ensures stale data is cleared)
         total_odds = 0
+        odds_data = []
         for doc in db_fs.collection("sync_odds").stream():
             data = doc.to_dict()
             for od in data.get("odds", []):
+                odds_data.append(od)
+        if odds_data:
+            conn.execute("DELETE FROM match_odds")
+            for od in odds_data:
                 conn.execute("""
-                    INSERT OR REPLACE INTO match_odds (league_key, sport_key, match_title, start_time, bookmakers_json, updated_at)
+                    INSERT INTO match_odds (league_key, sport_key, match_title, start_time, bookmakers_json, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (od.get("league_key"), od.get("sport_key"), od.get("match_title"),
                       od.get("start_time"), od.get("bookmakers_json"),
@@ -1584,6 +1589,21 @@ def admin_list_odds(
     rows = [{"match_title": r["match_title"], "sport_key": r["sport_key"], "league_key": r["league_key"], "start_time": r["start_time"]} for r in cur.fetchall()]
     conn.close()
     return {"count": len(rows), "odds": rows}
+
+@app.post("/admin/refresh-firestore")
+def admin_refresh_firestore(
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
+    """Force a Firestore refresh (downloads latest events + odds)."""
+    require_api_key(x_api_key)
+    global _last_firestore_sync
+    _last_firestore_sync = ""  # Reset to force re-download
+    _refresh_from_firestore()
+    conn = _db_connect()
+    event_count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+    odds_count = conn.execute("SELECT COUNT(*) FROM match_odds").fetchone()[0]
+    conn.close()
+    return {"status": "ok", "events": event_count, "odds": odds_count}
 
 @app.post("/analyze-ticket")
 async def analyze_custom_ticket(
