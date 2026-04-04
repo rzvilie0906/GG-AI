@@ -15,7 +15,7 @@ const inter = Inter({
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "700"],
   display: "swap",
   variable: "--font-mono",
 });
@@ -28,12 +28,6 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ro" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
-      <head>
-        <link rel="preconnect" href="https://firebaseinstallations.googleapis.com" />
-        <link rel="preconnect" href="https://identitytoolkit.googleapis.com" />
-        <link rel="dns-prefetch" href="https://firebaseinstallations.googleapis.com" />
-        <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
-      </head>
       <body className="min-h-screen antialiased font-ui">
         <MaintenanceWarning />
         <AuthProviderWrapper>{children}</AuthProviderWrapper>

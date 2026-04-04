@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
-import { sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { getFirebaseAuth } from "@/lib/firebase";
 import Link from "next/link";
 import { Suspense } from "react";
 import { GoogleReCaptchaProvider, useGoogleReCaptcha } from "react-google-recaptcha-v3";
@@ -15,6 +14,7 @@ const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
 /** Helper: set the session cookie via our API route and return true on success */
 async function ensureSessionCookie(remember: boolean): Promise<boolean> {
   try {
+    const { auth } = await getFirebaseAuth();
     const fbToken = await auth.currentUser?.getIdToken();
     if (!fbToken) return false;
     const res = await fetch("/api/auth/remember", {
@@ -85,6 +85,8 @@ function SignInForm() {
         setLoading(false);
         return;
       }
+      const { auth } = await getFirebaseAuth();
+      const { setPersistence, browserLocalPersistence, browserSessionPersistence } = await import("firebase/auth");
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       await signIn(email, password);
       // Set session cookie before navigating
@@ -122,6 +124,8 @@ function SignInForm() {
     }
     setLoading(true);
     try {
+      const { auth } = await getFirebaseAuth();
+      const { sendPasswordResetEmail } = await import("firebase/auth");
       await sendPasswordResetEmail(auth, email);
       setResetSent(true);
     } catch (err: unknown) {
@@ -145,6 +149,8 @@ function SignInForm() {
     setLoading(true);
     signingInRef.current = true;
     try {
+      const { auth } = await getFirebaseAuth();
+      const { setPersistence, browserLocalPersistence, browserSessionPersistence } = await import("firebase/auth");
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       // Open Google popup FIRST (must be direct user gesture for mobile)
       const result = await signInWithGoogle();

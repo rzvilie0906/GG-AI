@@ -9,19 +9,8 @@ import {
   ReactNode,
   useCallback,
 } from "react";
-import {
-  User,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  signOut as firebaseSignOut,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-} from "firebase/auth";
-import { auth, googleProvider } from "@/lib/firebase";
+import type { User } from "firebase/auth";
+import { getFirebaseAuth } from "@/lib/firebase";
 import { setFirebaseTokenGetter } from "@/lib/api";
 
 // ── Types ───────────────────────────────────────────────────────
@@ -159,68 +148,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Handle Google redirect result (mobile flow)
-    // After signInWithRedirect, the page reloads and we process the result here.
-    getRedirectResult(auth).then(async (result) => {
-      if (result?.user) {
-        try {
-          const token = await result.user.getIdToken();
-          // Register user in backend
-          await fetch(`${API_BASE}/api/auth/register`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              uid: result.user.uid,
-              email: result.user.email,
-              provider: "google",
-            }),
-          });
-          // Set session cookie so middleware allows navigation
-          await fetch("/api/auth/remember", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ remember: false }),
-          });
-          // Navigate explicitly — full page load so middleware sees the fresh cookie
-          window.location.href = "/dashboard";
-        } catch (e) {
-          console.error("Failed to register redirect user:", e);
+    let unsub: (() => void) | null = null;
+    let mounted = true;
+
+    getFirebaseAuth().then(async ({ auth }) => {
+      if (!mounted) return;
+      const { onAuthStateChanged, getRedirectResult } = await import("firebase/auth");
+
+      // Handle Google redirect result (mobile flow)
+      // After signInWithRedirect, the page reloads and we process the result here.
+      getRedirectResult(auth).then(async (result) => {
+        if (result?.user) {
+          try {
+            const token = await result.user.getIdToken();
+            // Register user in backend
+            await fetch(`${API_BASE}/api/auth/register`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                uid: result.user.uid,
+                email: result.user.email,
+                provider: "google",
+              }),
+            });
+            // Set session cookie so middleware allows navigation
+            await fetch("/api/auth/remember", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ remember: false }),
+            });
+            // Navigate explicitly — full page load so middleware sees the fresh cookie
+            window.location.href = "/dashboard";
+          } catch (e) {
+            console.error("Failed to register redirect user:", e);
+          }
         }
-      }
-    }).catch((err) => {
-      console.error("getRedirectResult error:", err);
+      }).catch((err) => {
+        console.error("getRedirectResult error:", err);
+      });
+
+      unsub = onAuthStateChanged(auth, (firebaseUser) => {
+        if (!mounted) return;
+        setUser(firebaseUser);
+        setLoading(false);
+        // Update API token getter
+        if (firebaseUser) {
+          setFirebaseTokenGetter(async () => {
+            try { return await firebaseUser.getIdToken(); } catch { return null; }
+          });
+          // If this is a session restoration (not a fresh sign-in),
+          // refresh the middleware cookie so protected routes stay accessible
+          if (!justSignedInRef.current) {
+            firebaseUser.getIdToken().then(token => {
+              fetch("/api/auth/session", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+              }).catch(() => {});
+            }).catch(() => {});
+          }
+          justSignedInRef.current = false;
+        } else {
+          setFirebaseTokenGetter(async () => null);
+        }
+      });
     });
 
-    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-      // Update API token getter
-      if (firebaseUser) {
-        setFirebaseTokenGetter(async () => {
-          try { return await firebaseUser.getIdToken(); } catch { return null; }
-        });
-        // If this is a session restoration (not a fresh sign-in),
-        // refresh the middleware cookie so protected routes stay accessible
-        if (!justSignedInRef.current) {
-          firebaseUser.getIdToken().then(token => {
-            fetch("/api/auth/session", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-            }).catch(() => {});
-          }).catch(() => {});
-        }
-        justSignedInRef.current = false;
-      } else {
-        setFirebaseTokenGetter(async () => null);
-      }
-    });
-    return unsub;
+    return () => {
+      mounted = false;
+      if (unsub) unsub();
+    };
   }, []);
 
   // Fetch subscription when user changes
@@ -233,6 +235,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Auth methods ──────────────────────────────────────
 
   const signIn = async (email: string, password: string) => {
+    const { auth } = await getFirebaseAuth();
+    const { signInWithEmailAndPassword, signOut: firebaseSignOut } = await import("firebase/auth");
     const cred = await signInWithEmailAndPassword(auth, email, password);
     if (!cred.user.emailVerified) {
       await firebaseSignOut(auth);
@@ -265,6 +269,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName?: string, dateOfBirth?: string) => {
+    const { auth } = await getFirebaseAuth();
+    const { createUserWithEmailAndPassword, sendEmailVerification, signOut: firebaseSignOut } = await import("firebase/auth");
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await sendEmailVerification(cred.user);
     // Register user in backend
@@ -292,6 +298,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async (): Promise<{ needsProfile: boolean }> => {
+    const { auth, googleProvider } = await getFirebaseAuth();
+    const { signInWithPopup, signInWithRedirect } = await import("firebase/auth");
     // Mobile browsers can't handle cross-origin popups properly.
     // Use redirect on mobile — the result is handled by getRedirectResult above.
     const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(
@@ -365,18 +373,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error("Eroare la invalidarea sesiunii:", e);
     }
+    const { auth } = await getFirebaseAuth();
+    const { signOut: firebaseSignOut } = await import("firebase/auth");
     await firebaseSignOut(auth);
     setUser(null);
     setSubscription(null);
   };
 
   const resendVerification = async () => {
+    const { auth } = await getFirebaseAuth();
+    const { sendEmailVerification } = await import("firebase/auth");
     if (auth.currentUser) {
       await sendEmailVerification(auth.currentUser);
     }
   };
 
   const resetPassword = async (email: string) => {
+    const { auth } = await getFirebaseAuth();
+    const { sendPasswordResetEmail } = await import("firebase/auth");
     await sendPasswordResetEmail(auth, email);
   };
 
