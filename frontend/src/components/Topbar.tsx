@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { RefreshCw } from "./Icons";
 
 interface TopbarProps {
@@ -40,9 +41,21 @@ export default function Topbar({ apiOnline, lastRefresh, isRefreshing, onRefresh
   return (
     <header className="h-14 border-b border-[rgba(255,255,255,0.06)] bg-[#0d1117]/80 backdrop-blur-xl sticky top-0 z-50">
       <div className="max-w-[1920px] mx-auto h-full px-5 flex items-center justify-between">
-        {/* Left — Brand */}
+        {/* Left — Brand + Home */}
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="GG-AI" className="h-8 w-auto object-contain" />
+          <Link href="/" title="Pagina principală">
+            <img src="/logo.png" alt="GG-AI" className="h-10 w-auto object-contain hover:brightness-125 transition-all" />
+          </Link>
+          <Link
+            href="/"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:text-white hover:bg-white/[0.06] transition-all"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+            Acasă
+          </Link>
         </div>
 
         {/* Right — Status + Refresh + Avatar */}
