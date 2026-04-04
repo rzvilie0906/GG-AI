@@ -37,7 +37,19 @@
 .lp-nav-inner { display: flex; align-items: center; justify-content: space-between; }
 .lp-nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: white; }
 .lp-nav-logo-img {
-  height: 40px; width: auto; object-fit: contain;
+  height: 52px; width: auto; object-fit: contain;
+  border-radius: 12px;
+  border: 1.5px solid rgba(100, 180, 255, 0.3);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.25), 0 0 4px rgba(139, 92, 246, 0.15);
+  transition: all 0.3s;
+}
+.lp-nav-logo-img:hover {
+  border-color: rgba(100, 180, 255, 0.6);
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.4), 0 0 8px rgba(139, 92, 246, 0.3);
+  transform: scale(1.05);
+}
+.lp-footer-brand .lp-nav-logo-img {
+  height: 64px;
 }
 .lp-nav-logo {
   width: 36px; height: 36px; border-radius: 10px;

@@ -39,12 +39,12 @@ export default function Topbar({ apiOnline, lastRefresh, isRefreshing, onRefresh
     : "?";
 
   return (
-    <header className="h-14 border-b border-[rgba(255,255,255,0.06)] bg-[#0d1117]/80 backdrop-blur-xl sticky top-0 z-50">
+    <header className="h-16 border-b border-[rgba(255,255,255,0.06)] bg-[#0d1117]/80 backdrop-blur-xl sticky top-0 z-50">
       <div className="max-w-[1920px] mx-auto h-full px-5 flex items-center justify-between">
         {/* Left — Brand + Home */}
         <div className="flex items-center gap-3">
           <Link href="/" title="Pagina principală">
-            <img src="/logo.png" alt="GG-AI" className="h-10 w-auto object-contain hover:brightness-125 transition-all" />
+            <img src="/logo.png" alt="GG-AI" className="h-11 w-auto object-contain rounded-xl border border-[rgba(100,180,255,0.3)] shadow-[0_0_16px_rgba(59,130,246,0.25),0_0_4px_rgba(139,92,246,0.15)] hover:border-[rgba(100,180,255,0.6)] hover:shadow-[0_0_24px_rgba(59,130,246,0.4),0_0_8px_rgba(139,92,246,0.3)] hover:scale-105 transition-all" />
           </Link>
           <Link
             href="/"
