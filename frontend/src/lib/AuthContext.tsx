@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   ReactNode,
   useCallback,
 } from "react";
@@ -98,6 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     MOCK_AUTH ? MOCK_SUBSCRIPTION : null
   );
   const [subLoading, setSubLoading] = useState(false);
+
+  // Track whether a sign-in just happened (vs. session restoration from persistence)
+  const justSignedInRef = useRef(false);
 
   // Get Firebase ID token
   const getIdToken = useCallback(async (): Promise<string | null> => {
@@ -201,6 +205,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setFirebaseTokenGetter(async () => {
           try { return await firebaseUser.getIdToken(); } catch { return null; }
         });
+        // If this is a session restoration (not a fresh sign-in),
+        // refresh the middleware cookie so protected routes stay accessible
+        if (!justSignedInRef.current) {
+          firebaseUser.getIdToken().then(token => {
+            fetch("/api/auth/session", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+        justSignedInRef.current = false;
       } else {
         setFirebaseTokenGetter(async () => null);
       }
@@ -223,6 +238,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await firebaseSignOut(auth);
       throw new Error("EMAIL_NOT_VERIFIED");
     }
+    // Set user immediately so UI updates before onAuthStateChanged fires
+    justSignedInRef.current = true;
+    setUser(cred.user);
+    setFirebaseTokenGetter(async () => {
+      try { return await cred.user.getIdToken(); } catch { return null; }
+    });
     // Ensure user record exists in backend (handles DB resets after Railway redeploy)
     try {
       const token = await cred.user.getIdToken();
@@ -299,6 +320,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw popupErr;
     }
+    // Set user immediately so UI updates before onAuthStateChanged fires
+    justSignedInRef.current = true;
+    setUser(cred.user);
+    setFirebaseTokenGetter(async () => {
+      try { return await cred.user.getIdToken(); } catch { return null; }
+    });
     // Register/update user in backend
     let needsProfile = false;
     try {

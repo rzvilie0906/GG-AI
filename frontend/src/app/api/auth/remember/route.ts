@@ -8,8 +8,10 @@ const REMEMBER_DAYS = 30;
  * Proxy către backend-ul FastAPI — setează cookie-urile pe domeniul frontend-ului.
  */
 export async function POST(request: NextRequest) {
+  let remember = false;
   try {
     const body = await request.json();
+    remember = body.remember === true;
     const authorization = request.headers.get("authorization") || "";
 
     // Apelăm backend-ul
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
           secure: process.env.NODE_ENV === "production",
           sameSite: "lax",
           path: "/",
-          ...(body.remember ? { maxAge: REMEMBER_DAYS * 24 * 60 * 60 } : {}),
+          ...(remember ? { maxAge: REMEMBER_DAYS * 24 * 60 * 60 } : {}),
         });
       }
       return errResponse;
@@ -53,13 +55,12 @@ export async function POST(request: NextRequest) {
       const value = valParts.join("=");
 
       if (name === "remember_token" || name === "token") {
-        const isRemember = body.remember === true;
         response.cookies.set(name, value, {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
           sameSite: "lax",
           path: "/",
-          ...(isRemember ? { maxAge: REMEMBER_DAYS * 24 * 60 * 60 } : {}),
+          ...(remember ? { maxAge: REMEMBER_DAYS * 24 * 60 * 60 } : {}),
         });
       }
     }
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        ...(body.remember ? { maxAge: REMEMBER_DAYS * 24 * 60 * 60 } : {}),
+        ...(remember ? { maxAge: REMEMBER_DAYS * 24 * 60 * 60 } : {}),
       });
     }
 
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
+      ...(remember ? { maxAge: REMEMBER_DAYS * 24 * 60 * 60 } : {}),
     });
     return errResponse;
   }

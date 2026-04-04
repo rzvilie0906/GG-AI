@@ -49,14 +49,13 @@ function SignInForm() {
     if (authLoading || signingInRef.current) return;
     if (user && user.emailVerified) {
       // Don't fight with getRedirectResult — wait a tick for it to finish
-      const timer = setTimeout(async () => {
-        await ensureSessionCookie(false);
+      const timer = setTimeout(() => {
         if (priceId) {
           router.replace(`/pricing?priceId=${priceId}`);
         } else {
           router.replace(redirect);
         }
-      }, 500);
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [user, authLoading, router, redirect, priceId]);
