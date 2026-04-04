@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/lib/AuthContext";
@@ -45,7 +46,10 @@ export default function LandingPage() {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
-          if (e.isIntersecting) e.target.classList.add("visible");
+          if (e.isIntersecting) {
+            e.target.classList.add("visible");
+            observer.unobserve(e.target);
+          }
         });
       },
       { threshold: 0.1, rootMargin: "0px 0px -60px 0px" }
@@ -54,9 +58,9 @@ export default function LandingPage() {
       document.querySelectorAll(".fade-in:not(.visible)").forEach((el) => observer.observe(el));
     }
     observeAll();
-    const mutation = new MutationObserver(observeAll);
-    mutation.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); mutation.disconnect(); };
+    // Re-observe after dynamic imports settle
+    const timer = setTimeout(observeAll, 1000);
+    return () => { observer.disconnect(); clearTimeout(timer); };
   }, []);
 
   const isLoggedIn = !!user;
@@ -83,7 +87,7 @@ export default function LandingPage() {
       <nav className={`lp-navbar ${scrolled ? "lp-navbar-scrolled" : ""}`}>
         <div className="lp-container lp-nav-inner">
           <Link href="/" className="lp-nav-brand">
-            <img src="/logo.png" alt="GG-AI" className="lp-nav-logo-img" />
+            <Image src="/logo.png" alt="GG-AI" width={160} height={160} className="lp-nav-logo-img" priority />
           </Link>
           <div className={`lp-nav-links ${mobileMenu ? "lp-nav-links-open" : ""}`}>
             <a href="#beneficii">Beneficii</a>
@@ -376,7 +380,7 @@ export default function LandingPage() {
         <div className="lp-container lp-footer-inner">
           <div className="lp-footer-brand">
             <Link href="/" className="lp-nav-brand">
-              <img src="/logo.png" alt="GG-AI" className="lp-nav-logo-img" />
+              <Image src="/logo.png" alt="GG-AI" width={160} height={160} className="lp-nav-logo-img" loading="lazy" />
             </Link>
             <p>Analizator AI de pariuri sportive. Selecții zilnice cu valoare, bilete inteligente și scoruri de încredere.</p>
           </div>

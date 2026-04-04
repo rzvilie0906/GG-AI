@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { RefreshCw } from "./Icons";
 
 interface TopbarProps {
@@ -44,7 +45,7 @@ export default function Topbar({ apiOnline, lastRefresh, isRefreshing, onRefresh
         {/* Left — Brand + Home */}
         <div className="flex items-center gap-3">
           <Link href="/" title="Pagina principală">
-            <img src="/logo.png" alt="GG-AI" className="h-11 w-auto object-contain rounded-xl border border-[rgba(100,180,255,0.3)] shadow-[0_0_16px_rgba(59,130,246,0.25),0_0_4px_rgba(139,92,246,0.15)] hover:border-[rgba(100,180,255,0.6)] hover:shadow-[0_0_24px_rgba(59,130,246,0.4),0_0_8px_rgba(139,92,246,0.3)] hover:scale-105 transition-all" />
+            <Image src="/logo.png" alt="GG-AI" width={120} height={120} className="h-11 w-auto object-contain rounded-xl border border-[rgba(100,180,255,0.3)] shadow-[0_0_16px_rgba(59,130,246,0.25),0_0_4px_rgba(139,92,246,0.15)] hover:border-[rgba(100,180,255,0.6)] hover:shadow-[0_0_24px_rgba(59,130,246,0.4),0_0_8px_rgba(139,92,246,0.3)] hover:scale-105 transition-all" priority />
           </Link>
           <Link
             href="/"
