@@ -5,51 +5,51 @@ import { useState } from "react";
 const faqItems = [
   {
     q: "Ce sporturi acoperă GG-AI?",
-    a: "GG-AI analizează zilnic meciuri din 5 sporturi majore: fotbal (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League și multe altele), baschet (NBA, EuroLeague), hochei (NHL), tenis (ATP, WTA, Grand Slam) și baseball (MLB). Motorul AI generează 4 bilete zilnice — mixt (toate sporturile combinate), fotbal, baschet și hochei — selectând meciuri cu cote sub-evaluate pe baza analizei statistice avansate."
+    a: "Acoperim 5 sporturi: fotbal (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League și altele), baschet (NBA), hochei (NHL), tenis (ATP, WTA) și baseball (MLB). În fiecare zi primești 4 bilete — unul mixt cu meciuri din mai multe sporturi, plus câte unul dedicat pentru fotbal, baschet și hochei."
   },
   {
     q: "Cum sunt generate biletele zilnice?",
-    a: "Procesul este complet automatizat. Zilnic la ora 09:00, scheduler-ul preia meciurile programate pe următoarele 7 zile și cotele de la bookmakers pe +2 zile prin API-uri specializate (ESPN pentru date statistice, The Odds API pentru cotele bookmaker-ilor). Apoi, GPT-4o analizează fiecare meci potențial — formă recentă, clasament, H2H, accidentări, condiții meteorologice — și selectează 2–4 meciuri cu cele mai bune value bets. Se generează 4 bilete structurate: mixt, fotbal, baschet și hochei, fiecare cu pariu principal, pariu secundar, interval de cote corecte și explicații detaliate. Biletele sunt disponibile în dashboard de la ora 10:00."
+    a: "Totul e automat. În fiecare dimineață la 09:00, sistemul nostru adună meciurile din următoarele 7 zile și cotele de la casele de pariuri. Apoi, AI-ul (GPT-4o) trece prin fiecare meci — formă recentă, clasament, meciuri directe, accidentări — și alege 2–4 meciuri cu valoare reală. Rezultatul? 4 bilete gata de jucat, disponibile în dashboard de la 10:00, fiecare cu pariuri recomandate, intervale de cote și explicații clare."
   },
   {
     q: "Ce include analiza fiecărui meci?",
-    a: "Fiecare analiză AI conține: un pariu principal (recomandarea #1 cu probabilitatea cea mai mare de succes), un pariu secundar (alternativă cu raport risc/câștig diferit), intervale de cote corecte (minim și maxim la care merită plasat pariul), probabilitatea estimată de AI (procentul de probabilitate calculat de model), un rating de risc (etichetă Riscant sau Bun), un scor/notă de încredere de la 1 la 10, și o explicație detaliată care descrie logica din spatele predicției — formă recentă, statistici H2H, absențe, factori contextuali."
+    a: "Primești tot ce ai nevoie ca să iei o decizie informată: un pariu principal (recomandarea #1), un pariu secundar (alternativă cu alt profil de risc), intervalul de cote la care merită plasat pariul, probabilitatea estimată de AI, un scor de încredere de la 1 la 10, și o explicație detaliată — de ce a ales AI-ul exact acel pariu, ce statistici l-au convins și ce factori ar putea influența rezultatul."
   },
   {
     q: "Ce este Analizorul de Risc al Biletului?",
-    a: "Analizorul de Risc este o funcție avansată disponibilă în planurile Pro și Elite. Adaugi meciurile tale pe biletul personal din dashboard, iar AI-ul evaluează întregul bilet în ansamblu — nu doar meciul individual. Primești un scor de risc total, un verdict clar (Riscant/Medie/Bun), și sfaturi despre cum să îmbunătățești biletul (de exemplu: cota e prea mare pe meciul X, consideră alternativa Y). Planul Pro permite maxim 7 verificări de bilet pe zi, iar planul Elite oferă verificări nelimitate."
+    a: "E ca și cum ai avea un consultant alături. Adaugi meciurile tale pe bilet în dashboard, iar AI-ul evaluează biletul în ansamblu — nu doar fiecare meci separat. Primești un scor de risc total, un verdict clar și sfaturi concrete: „cota pe meciul X e prea mare, încearcă alternativa Y". Disponibil în planurile Pro (max 7 verificări/zi) și Elite (nelimitat)."
   },
   {
     q: "Pot anula abonamentul oricând?",
-    a: "Da, absolut. Toate cele trei planuri — Săptămânal, Pro și Elite — pot fi anulate oricând direct din secțiunea Contul meu din dashboard. Nu există obligații pe termen lung, contracte minime sau taxe de anulare. Odată anulat, vei păstra accesul complet la toate funcționalitățile până la sfârșitul perioadei de facturare curente (sfârșitul săptămânii/lunii/anului plătit). Nu se oferă rambursări pentru perioada rămasă."
+    a: "Da, fără nicio problemă. Intri în secțiunea „Contul meu" din dashboard, apeși anulare și gata. Fără contracte, fără penalități, fără întrebări. După anulare, păstrezi accesul la tot până la sfârșitul perioadei plătite."
   },
   {
-    q: "Care este diferența dintre planurile Săptămânal, Pro și Elite?",
-    a: "Săptămânal (14.99€/săptămână) — ideal pentru a testa platforma: include 4 bilete zilnice generate AI, maximum 7 analize individuale de meciuri pe zi, pariu principal + secundar, interval de cote corecte și calendar meciuri pe 7 zile. Nu include Analizorul de Risc. Pro (39.99€/lună sau 399.99€/an) — cel mai popular: include tot din Săptămânal plus analize de meciuri nelimitate, Analizor Risc Bilet (maximum 7 bilete/zi), scoring premium și explicații mai detaliate. Elite (99.99€/lună sau 999.99€/an) — fără limite absolut: include tot din Pro plus Analizor Risc Bilet nelimitat, prioritate maximă la procesare, urmărire avansată a cotelor și suport prioritar 24/7."
+    q: "Care este diferența dintre planuri?",
+    a: "Săptămânal (14.99€/săptămână) — perfect ca să testezi: 4 bilete zilnice, până la 7 analize de meciuri pe zi, pariuri principale + secundare și calendar pe 7 zile. Pro (39.99€/lună) — cel mai popular: totul din Săptămânal, plus analize nelimitate și Analizor de Risc (max 7 bilete/zi). Elite (99.99€/lună) — fără nicio limită: totul din Pro, plus Analizor de Risc nelimitat, procesare prioritară și suport dedicat."
   },
   {
-    q: "Plata este sigură? Ce date stocați?",
-    a: "Da, plățile sunt 100% securizate. Folosim Stripe ca procesor de plăți — cel mai de încredere la nivel mondial, certificat PCI-DSS Level 1 (cel mai înalt standard de securitate pentru carduri). Nu stocăm niciodată datele cardului tău pe serverele noastre — nici numărul cardului, nici CVV-ul, nici data de expirare. Toate informațiile financiare rămân exclusiv la Stripe. Comunicarea între browser-ul tău și serverele noastre este criptată end-to-end cu SSL/TLS 256-bit."
+    q: "Plata este sigură?",
+    a: "100%. Plățile trec prin Stripe — lider mondial în procesarea plăților, cu certificare PCI-DSS Level 1 (cel mai înalt standard de securitate). Datele cardului tău nu ajung niciodată pe serverele noastre — nici numărul, nici CVV-ul. Totul rămâne la Stripe, iar comunicarea e criptată end-to-end cu SSL 256-bit."
   },
   {
-    q: "Cum se creează un cont și care sunt cerințele?",
-    a: "Te poți înregistra cu email și parolă sau direct cu contul tău Google. La înregistrarea prin email, trebuie să furnizezi numele complet și data nașterii. Trebuie să ai minimum 18 ani pentru a te înregistra — aceasta este o cerință legală pentru serviciile legate de pariuri sportive. După crearea contului, vei primi un email de verificare pe care trebuie să-l confirmi înainte de a accesa platforma. Odată verificat, poți alege un plan de abonament și accesa dashboard-ul complet."
+    q: "Cum îmi fac cont?",
+    a: "Poți alege între email + parolă sau direct cu contul Google. E nevoie de nume complet, data nașterii și vârsta minimă de 18 ani (cerință legală). Vei primi un email de confirmare — odată verificat, alegi un plan și ai acces instant la dashboard."
   },
   {
     q: "GG-AI garantează câștiguri?",
-    a: "Nu. Niciun sistem, algoritm sau serviciu nu poate garanta câștiguri la pariuri sportive — și oricine pretinde altfel nu este onest. GG-AI este un instrument de analiză și suport decizional care îți oferă un avantaj informațional: date statistice procesate de AI, identificarea value bets, evaluarea riscului și recomandări bazate pe probabilități. Rezultatele sportive rămân impredictibile prin natura lor. Pariurile implică risc financiar real — pariază doar sume pe care ți le poți permite să le pierzi și joacă responsabil."
+    a: "Sincer, nu — și nimeni nu poate. Pariurile sportive implică risc prin natura lor, iar orice serviciu care promite câștiguri garantate nu e de încredere. Ce oferim noi e un avantaj informațional real: analiză bazată pe date, identificarea cotelor subevaluate și evaluarea riscului. AI-ul face munca grea, dar decizia finală e întotdeauna a ta. Pariază doar ce îți permiți să pierzi."
   },
   {
-    q: "Pot accesa GG-AI de pe telefon?",
-    a: "Da. Dashboard-ul GG-AI este complet responsive, optimizat pentru telefoane, tablete și desktop. Nu este nevoie să instalezi nicio aplicație — accesezi platforma direct din browser-ul mobil. Toate funcționalitățile — bilete zilnice, analize, ticket builder, analizor de risc — funcționează identic pe orice dispozitiv."
+    q: "Funcționează pe telefon?",
+    a: "Da, fără nicio aplicație de instalat. Deschizi site-ul din browser-ul telefonului și ai acces la tot — bilete, analize, ticket builder, analizor de risc. Interfața e optimizată pentru mobile, tabletă și desktop."
   },
   {
     q: "Când primesc biletele zilnice?",
-    a: "Meciurile sunt sincronizate și actualizate zilnic la ora 09:00 (ora României). Biletele generate de AI sunt disponibile în dashboard de la ora 10:00. Primești 4 bilete noi în fiecare zi: un bilet mixt (combinație din toate sporturile), plus bilete separate pentru fotbal, baschet și hochei. Biletele se bazează pe meciurile programate în ziua respectivă și următoarele zile."
+    a: "Meciurile se sincronizează în fiecare dimineață la 09:00 (ora României), iar biletele AI sunt gata la 10:00. Primești 4 bilete proaspete zilnic: mixt, fotbal, baschet și hochei. Simplu — deschizi dashboard-ul după 10 și ai tot ce-ți trebuie."
   },
   {
-    q: "Ce se întâmplă dacă am probleme sau întrebări?",
-    a: "Utilizatorii cu plan Elite beneficiază de suport prioritar 24/7. Pentru toți utilizatorii, poți trimite un mesaj prin formularul de contact sau prin email. Echipa noastră răspunde de obicei în mai puțin de 24 de ore pentru problemele tehnice sau întrebări legate de cont, facturare și funcționalități."
+    q: "Am o problemă sau o întrebare. Ce fac?",
+    a: "Scrie-ne prin formularul de contact sau pe email. Răspundem de obicei în mai puțin de 24 de ore. Dacă ai plan Elite, beneficiezi de suport prioritar — mesajele tale ajung primele."
   },
 ];
 
