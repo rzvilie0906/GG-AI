@@ -207,6 +207,62 @@ def _build_real_odds_section(odds_str: str) -> list:
         print(f"⚠️ [BUILD_ODDS] Eroare: {e}")
         return []
 
+def _lookup_odds_from_db(sport: str, home_team: str, away_team: str) -> str:
+    """Look up bookmaker odds JSON from the match_odds table. Returns raw JSON string or COTE_LIPSĂ."""
+    fallback = "COTE_LIPSĂ"
+    try:
+        conn = _db_connect()
+        cur = conn.cursor()
+        home_kw = get_kw(home_team, sport)
+        away_kw = get_kw(away_team, sport)
+        odds_prefix = SPORT_TO_ODDS_PREFIX.get(sport, "")
+
+        # Strict: both teams + sport
+        cur.execute("""
+            SELECT bookmakers_json, match_title FROM match_odds
+            WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE
+            AND strip_accents(match_title) LIKE ? COLLATE NOCASE
+            AND sport_key LIKE ?
+        """, (f"%{home_kw}%", f"%{away_kw}%", f"{odds_prefix}%"))
+        odds_row = cur.fetchone()
+
+        # Fallback: home team only
+        if not odds_row:
+            if sport == "tennis":
+                home_parts = strip_accents(home_team).strip().split()
+                if len(home_parts) >= 2:
+                    cur.execute("""
+                        SELECT bookmakers_json, match_title FROM match_odds
+                        WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE
+                        AND strip_accents(match_title) LIKE ? COLLATE NOCASE
+                        AND sport_key LIKE ?
+                    """, (f"%{home_parts[0]}%", f"%{home_parts[-1]}%", f"{odds_prefix}%"))
+                    odds_row = cur.fetchone()
+            else:
+                cur.execute("""
+                    SELECT bookmakers_json, match_title FROM match_odds
+                    WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE
+                    AND sport_key LIKE ?
+                """, (f"%{home_kw}%", f"{odds_prefix}%"))
+                odds_row = cur.fetchone()
+
+        conn.close()
+        if odds_row:
+            print(f"✅ [COTE] Găsite pentru {home_team} vs {away_team} → {odds_row['match_title']}")
+            return odds_row["bookmakers_json"]
+        print(f"⚠️ [COTE] Nu s-au găsit cote pentru {home_team} vs {away_team} (sport={sport})")
+        return fallback
+    except Exception as e:
+        print(f"⚠️ [COTE] Eroare lookup: {e}")
+        return fallback
+
+def _inject_real_odds(analysis: dict, odds_str: str) -> dict:
+    """Inject/override section3_odds with real bookmaker data."""
+    real_odds = _build_real_odds_section(odds_str)
+    if real_odds:
+        analysis["section3_odds"] = real_odds
+    return analysis
+
 class AnalyzeRequest(BaseModel):
     sport: Sport
     league: str = Field(min_length=1, max_length=160)
@@ -1295,7 +1351,11 @@ def analyze_cached(sport: str = Query(""), home_team: str = Query(""), away_team
     row = conn.execute("SELECT analysis_json FROM saved_analyses WHERE match_key=?", (seif_key,)).fetchone()
     conn.close()
     if row:
-        return {"cached": True, "analysis": json.loads(row["analysis_json"])}
+        analysis = json.loads(row["analysis_json"])
+        # Always inject fresh odds from DB (they may have been missing at generation time)
+        odds_str = _lookup_odds_from_db(sport, home_team, away_team)
+        analysis = _inject_real_odds(analysis, odds_str)
+        return {"cached": True, "analysis": analysis}
     return {"cached": False}
 
 
@@ -1367,8 +1427,12 @@ async def analyze(
         conn.close()
         if firebase_uid:
             _increment_unique_analysis(firebase_uid, seif_key)
+        analysis = json.loads(row["analysis_json"])
+        # Always inject fresh odds from DB
+        odds_str = _lookup_odds_from_db(data.sport, data.home_team, data.away_team)
+        analysis = _inject_real_odds(analysis, odds_str)
         print(f"💎 [SEIF] Analiză livrată din memorie pentru: {data.home_team}")
-        return {"analysis": json.loads(row["analysis_json"])}
+        return {"analysis": analysis}
 
     # ── No cache — fetch premium data ──
     premium_raw = get_api_sports_data(data.sport, data.home_team, data.match_date)
@@ -1386,49 +1450,7 @@ async def analyze(
         "detalii_premium": premium_raw
     }
 
-    odds_str = "COTE_LIPSĂ: Nu oferi nicio cotă pe ecran. Nu inventa. Nu te plânge de lipsa lor."
-    try:
-        home_kw = get_kw(data.home_team, data.sport)
-        away_kw = get_kw(data.away_team, data.sport)
-        odds_prefix = SPORT_TO_ODDS_PREFIX.get(data.sport, "")
-        
-        # Pas 1: Căutare strictă — ambele echipe + sport corect (accent-insensitive)
-        cur.execute("""
-            SELECT bookmakers_json, match_title, sport_key FROM match_odds 
-            WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE 
-            AND strip_accents(match_title) LIKE ? COLLATE NOCASE
-            AND sport_key LIKE ?
-        """, (f"%{home_kw}%", f"%{away_kw}%", f"{odds_prefix}%"))
-        odds_row = cur.fetchone()
-        
-        # Pas 2: Fallback — doar echipa gazdă + sport corect (use both first+last name for tennis)
-        if not odds_row:
-            if data.sport == "tennis":
-                # For tennis, use full surname + first name to avoid cross-matching
-                home_parts = strip_accents(data.home_team).strip().split()
-                if len(home_parts) >= 2:
-                    cur.execute("""
-                        SELECT bookmakers_json, match_title, sport_key FROM match_odds 
-                        WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE 
-                        AND strip_accents(match_title) LIKE ? COLLATE NOCASE
-                        AND sport_key LIKE ?
-                    """, (f"%{home_parts[0]}%", f"%{home_parts[-1]}%", f"{odds_prefix}%"))
-                    odds_row = cur.fetchone()
-            else:
-                cur.execute("""
-                    SELECT bookmakers_json, match_title, sport_key FROM match_odds 
-                    WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE 
-                    AND sport_key LIKE ?
-                """, (f"%{home_kw}%", f"{odds_prefix}%"))
-                odds_row = cur.fetchone()
-        
-        if odds_row:
-            odds_str = odds_row["bookmakers_json"]
-            print(f"✅ [COTE] Găsite pentru {data.home_team} vs {data.away_team} ({data.sport}) → meci DB: {odds_row['match_title']} | sport_key: {odds_row['sport_key']}")
-        else:
-            print(f"⚠️ [COTE] Nu s-au găsit cote pentru {data.home_team} vs {data.away_team} ({data.sport}, prefix: {odds_prefix})")
-    except Exception as e:
-        print(f"⚠️ Eroare la citirea cotelor: {e}")
+    odds_str = _lookup_odds_from_db(data.sport, data.home_team, data.away_team)
 
     if data.sport == "football":
         live_intel = get_premium_football_data(data.home_team, data.away_team, data.match_date)
@@ -1479,10 +1501,7 @@ Returnează DOAR JSON valid conform schemei din system prompt."""
         parsed_json = _fix_probabilities(parsed_json)
         
         # Override section3_odds with real bookmaker data (never trust AI-generated odds)
-        real_odds = _build_real_odds_section(odds_str)
-        if real_odds:
-            parsed_json["section3_odds"] = real_odds
-            print(f"✅ [ODDS] section3_odds populat cu {len(real_odds)} piețe reale")
+        parsed_json = _inject_real_odds(parsed_json, odds_str)
         
         cur.execute("INSERT OR REPLACE INTO saved_analyses (match_key, analysis_json) VALUES (?, ?)", 
                     (seif_key, json.dumps(parsed_json, ensure_ascii=False)))
