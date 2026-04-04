@@ -36,6 +36,9 @@
 }
 .lp-nav-inner { display: flex; align-items: center; justify-content: space-between; }
 .lp-nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: white; }
+.lp-nav-logo-img {
+  height: 40px; width: auto; object-fit: contain;
+}
 .lp-nav-logo {
   width: 36px; height: 36px; border-radius: 10px;
   background: linear-gradient(135deg, var(--lp-primary), #8b5cf6);

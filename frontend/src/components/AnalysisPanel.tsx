@@ -141,8 +141,9 @@ function SecondaryBetsSection({ bets }: { bets: SecondaryBet[] }) {
   );
 }
 
-function OddsSection({ odds }: { odds: OddsEntry[] }) {
-  if (!odds.length) return <div className="text-xs text-text-muted py-4 text-center">Se calculează cotele...</div>;
+function OddsSection({ odds, isLoading }: { odds: OddsEntry[]; isLoading?: boolean }) {
+  if (isLoading) return <div className="text-xs text-text-muted py-4 text-center">Se calculează cotele...</div>;
+  if (!odds.length) return <div className="text-xs text-text-muted py-4 text-center">Cotele nu sunt disponibile momentan pentru acest meci.</div>;
 
   return (
     <div className="flex flex-col gap-2">
@@ -478,7 +479,7 @@ export default function AnalysisPanel({
                 <div className="skeleton-box h-14 rounded-xl" />
               </div>
             ) : (
-              <OddsSection odds={analysis?.section3_odds || []} />
+              <OddsSection odds={analysis?.section3_odds || []} isLoading={isLoading} />
             )}
           </div>
         )}

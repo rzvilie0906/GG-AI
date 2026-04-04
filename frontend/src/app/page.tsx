@@ -83,12 +83,7 @@ export default function LandingPage() {
       <nav className={`lp-navbar ${scrolled ? "lp-navbar-scrolled" : ""}`}>
         <div className="lp-container lp-nav-inner">
           <Link href="/" className="lp-nav-brand">
-            <div className="lp-nav-logo">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-            </div>
-            <span className="lp-nav-title">GG-<span className="lp-badge-pro">AI</span></span>
+            <img src="/logo.png" alt="GG-AI" className="lp-nav-logo-img" />
           </Link>
           <div className={`lp-nav-links ${mobileMenu ? "lp-nav-links-open" : ""}`}>
             <a href="#beneficii">Beneficii</a>
@@ -381,12 +376,7 @@ export default function LandingPage() {
         <div className="lp-container lp-footer-inner">
           <div className="lp-footer-brand">
             <Link href="/" className="lp-nav-brand">
-              <div className="lp-nav-logo">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                </svg>
-              </div>
-              <span className="lp-nav-title">GG-<span className="lp-badge-pro">AI</span></span>
+              <img src="/logo.png" alt="GG-AI" className="lp-nav-logo-img" />
             </Link>
             <p>Analizator AI de pariuri sportive. Selecții zilnice cu valoare, bilete inteligente și scoruri de încredere.</p>
           </div>

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, Activity } from "./Icons";
+import { RefreshCw } from "./Icons";
 
 interface TopbarProps {
   apiOnline: boolean;
@@ -42,14 +42,7 @@ export default function Topbar({ apiOnline, lastRefresh, isRefreshing, onRefresh
       <div className="max-w-[1920px] mx-auto h-full px-5 flex items-center justify-between">
         {/* Left — Brand */}
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-violet flex items-center justify-center shadow-glow">
-            <Activity className="text-white" size={16} />
-          </div>
-          <div className="flex items-center gap-2.5">
-            <span className="text-[17px] font-extrabold tracking-tight bg-gradient-to-r from-white to-[#94a3b8] bg-clip-text text-transparent">
-              GG-AI
-            </span>
-          </div>
+          <img src="/logo.png" alt="GG-AI" className="h-8 w-auto object-contain" />
         </div>
 
         {/* Right — Status + Refresh + Avatar */}

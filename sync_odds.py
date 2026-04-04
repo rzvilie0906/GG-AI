@@ -78,10 +78,11 @@ def init_db():
 
 # ── Credit budget ──────────────────────────────────────────────
 # 2000 credits/month (4 keys × 500) ÷ 31 days ≈ 64 credits/day.
-# Soccer uses 4cr (h2h+totals+spreads+btts), others 3cr, tennis 2cr.
-# We cap each sync at 80 credits to stay safely within budget.
-DAILY_CREDIT_BUDGET = 80
+# Soccer uses 3cr (h2h+totals+spreads) + 1cr/event for btts, others 3cr, tennis 2cr.
+# We cap each sync at 120 credits to stay safely within budget.
+DAILY_CREDIT_BUDGET = 120
 MAX_TENNIS_TOURNAMENTS = 3
+BTTS_CREDIT_BUDGET = 40  # max credits to spend on btts (1cr per event)
 
 def sync_odds():
     if not API_KEYS:
@@ -108,12 +109,16 @@ def sync_odds():
 
     print("📊 Încep descărcarea cotelor (piețe inteligente per sport)...")
     print(f"🔑 Avem la dispoziție {len(API_KEYS)} chei API.")
-    print(f"💰 Buget zilnic: {DAILY_CREDIT_BUDGET} credite (soccer/tennis=2cr, rest=3cr)")
+    print(f"💰 Buget zilnic: {DAILY_CREDIT_BUDGET} credite (soccer=3cr+btts, others=3cr, tennis=2cr)")
 
     total_matches = 0
     current_key_index = 0
     api_calls = 0
     credits_used = 0
+
+    # Collect soccer events for btts second pass
+    # List of (espn_key, odds_key, event_id, db_match_title)
+    soccer_events_for_btts = []
 
     for espn_key, odds_key in LEAGUE_MAP.items():
         # Skip leagues with no events in DB (saves API credits)
@@ -122,13 +127,13 @@ def sync_odds():
             continue
 
         # Smart market selection per sport:
-        # Soccer: h2h + totals + spreads + btts = 4 credits (BTTS = GG/NGG, most popular bet)
+        # Soccer: h2h + totals + spreads = 3 credits (btts fetched separately per event)
         # Basketball/Hockey/Baseball: h2h + totals + spreads = 3 credits
-        # Tennis: h2h + totals = 2 credits (no spreads/btts in tennis)
+        # Tennis: h2h + totals = 2 credits (no spreads in tennis)
         regions = "eu"
         if odds_key.startswith("soccer_"):
-            markets = "h2h,totals,spreads,btts"
-            call_cost = 4
+            markets = "h2h,totals,spreads"
+            call_cost = 3
         else:
             markets = "h2h,totals,spreads"
             call_cost = 3
@@ -165,6 +170,10 @@ def sync_odds():
                             espn_key, odds_key, title, start_time, json.dumps(bookies), datetime.now(timezone.utc).isoformat()
                         ))
                         total_matches += 1
+
+                        # Track soccer events for btts second pass
+                        if odds_key.startswith("soccer_") and m.get("id"):
+                            soccer_events_for_btts.append((espn_key, odds_key, m["id"], title))
                     
                     print(f"      ✅ {len(matches)} matches (budget: {credits_used}/{DAILY_CREDIT_BUDGET}cr, key remaining: {remaining})")
                     break 
@@ -192,6 +201,92 @@ def sync_odds():
         if current_key_index >= len(API_KEYS):
             print("❌ ATENȚIE: Am epuizat complet creditele de pe TOATE cheile disponibile! Opresc scanarea restului de ligi.")
             break
+
+    # ── BTTS second pass: fetch per-event (Additional Market) ─────
+    # btts is not a "featured market" so it must be fetched via
+    # /v4/sports/{sport}/events/{eventId}/odds?markets=btts
+    # Cost: 1 credit per event (0 if no btts data available).
+    if soccer_events_for_btts and current_key_index < len(API_KEYS):
+        btts_credits = 0
+        btts_fetched = 0
+        print(f"\n⚽ BTTS: Descărcarea cotelor 'Ambele Marchează' pentru {len(soccer_events_for_btts)} meciuri de fotbal...")
+        for espn_key, odds_key, event_id, match_title in soccer_events_for_btts:
+            if btts_credits >= BTTS_CREDIT_BUDGET:
+                print(f"   ⚠️ Buget BTTS atins ({btts_credits}/{BTTS_CREDIT_BUDGET}cr). Opresc.")
+                break
+            if credits_used + 1 > DAILY_CREDIT_BUDGET:
+                print(f"   ⚠️ Buget zilnic atins ({credits_used}/{DAILY_CREDIT_BUDGET}cr). Opresc BTTS.")
+                break
+
+            while current_key_index < len(API_KEYS):
+                current_key = API_KEYS[current_key_index]
+                btts_url = (
+                    f"https://api.the-odds-api.com/v4/sports/{odds_key}/events/{event_id}/odds"
+                    f"?apiKey={current_key}&regions=eu&markets=btts&oddsFormat=decimal"
+                )
+                try:
+                    resp = requests.get(btts_url, timeout=15)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        btts_bookmakers = data.get("bookmakers", [])
+                        actual_cost = int(resp.headers.get("x-requests-last", "1"))
+                        credits_used += actual_cost
+                        btts_credits += actual_cost
+                        api_calls += 1
+
+                        if btts_bookmakers:
+                            # Merge btts markets into the existing bookmakers_json for this match
+                            row = cur.execute(
+                                "SELECT id, bookmakers_json FROM match_odds WHERE match_title = ? AND sport_key = ? ORDER BY id DESC LIMIT 1",
+                                (match_title, odds_key)
+                            ).fetchone()
+                            if row:
+                                existing = json.loads(row[1])
+                                # Build a lookup: bookmaker_key -> bookmaker dict
+                                bk_lookup = {bk["key"]: bk for bk in existing}
+                                for btts_bk in btts_bookmakers:
+                                    bk_key = btts_bk["key"]
+                                    btts_markets = btts_bk.get("markets", [])
+                                    if bk_key in bk_lookup:
+                                        # Append btts market(s) to existing bookmaker
+                                        bk_lookup[bk_key].setdefault("markets", []).extend(btts_markets)
+                                    else:
+                                        # New bookmaker with only btts
+                                        existing.append(btts_bk)
+                                cur.execute(
+                                    "UPDATE match_odds SET bookmakers_json = ? WHERE id = ?",
+                                    (json.dumps(existing), row[0])
+                                )
+                            btts_fetched += 1
+                            print(f"      ✅ BTTS {match_title}: {len(btts_bookmakers)} bookmakers")
+                        else:
+                            print(f"      ⏭️ BTTS {match_title}: nicio cotă disponibilă")
+                        break
+
+                    elif resp.status_code == 429:
+                        print(f"   ⚠️ Cheia {current_key_index + 1} epuizată! Trec la următoarea...")
+                        current_key_index += 1
+
+                    elif resp.status_code == 404:
+                        print(f"      ⏭️ BTTS {match_title}: eveniment indisponibil")
+                        break
+
+                    else:
+                        print(f"      ⚠️ BTTS {match_title}: eroare {resp.status_code}")
+                        break
+
+                except Exception as e:
+                    print(f"      ⚠️ BTTS {match_title}: eroare rețea {e}")
+                    break
+
+            if current_key_index >= len(API_KEYS):
+                print("❌ ATENȚIE: Am epuizat complet creditele! Opresc BTTS.")
+                break
+
+        print(f"   ⚽ BTTS gata: {btts_fetched}/{len(soccer_events_for_btts)} meciuri cu cote BTTS ({btts_credits}cr)")
+    else:
+        if soccer_events_for_btts:
+            print("   ⚠️ Nu mai avem chei API disponibile pentru BTTS.")
 
     # ── Tennis: descoperire dinamică a sporturilor active ──────────
     if current_key_index < len(API_KEYS) and credits_used < DAILY_CREDIT_BUDGET:
@@ -275,7 +370,7 @@ def sync_odds():
     
     print("=====================================================")
     print(f"✅ GATA! Am descărcat cotele pentru {total_matches} meciuri ({api_calls} API calls).")
-    print(f"💰 Credite consumate: {credits_used}/{DAILY_CREDIT_BUDGET} buget zilnic")
+    print(f"💰 Credite consumate: {credits_used}/{DAILY_CREDIT_BUDGET} buget zilnic (incl. BTTS per-event)")
     print(f"📊 Estimare lunară: ~{credits_used * 31} credite/lună din 2000 disponibile")
     print("=====================================================")
 
