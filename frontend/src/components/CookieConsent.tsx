@@ -38,14 +38,14 @@ export default function CookieConsentBanner() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-[9999] p-4 md:p-6 animate-slide-up">
+    <div className="fixed bottom-0 inset-x-0 z-[9999] p-4 md:p-6 animate-slide-up" role="dialog" aria-label="Consimțământ cookie-uri">
       <div
         className="max-w-2xl mx-auto rounded-2xl border border-white/10 p-5 md:p-6 shadow-2xl"
         style={{ background: "var(--bg-card)", backdropFilter: "blur(20px)" }}
       >
         {/* Header */}
         <div className="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5" />
             <path d="M8.5 8.5v.01" />
             <path d="M16 15.5v.01" />

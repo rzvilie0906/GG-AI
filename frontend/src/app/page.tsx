@@ -111,6 +111,9 @@ export default function LandingPage() {
                   onClick={() => setProfileOpen(!profileOpen)}
                   className="lp-profile-avatar"
                   title={userEmail || ""}
+                  aria-expanded={profileOpen}
+                  aria-haspopup="true"
+                  aria-label="Meniu profil"
                 >
                   {initials}
                 </button>
@@ -122,21 +125,21 @@ export default function LandingPage() {
                     </div>
                     <div className="lp-profile-menu">
                       <button onClick={() => { setProfileOpen(false); router.push("/account"); }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
                         Contul meu
                       </button>
                       <button onClick={() => { setProfileOpen(false); router.push("/pricing?upgrade=true"); }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
                         Upgrade plan
                       </button>
                       <button onClick={() => { setProfileOpen(false); router.push("/suport"); }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
                         Suport
                       </button>
                     </div>
                     <div className="lp-profile-footer">
                       <button onClick={handleSignOut}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
                         Deconectare
                       </button>
                     </div>
@@ -173,7 +176,7 @@ export default function LandingPage() {
           <div className="lp-hero-ctas">
             <a href="#preturi" className="lp-btn lp-btn-primary lp-btn-lg">
               Vezi Planurile
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
             </a>
             <a href="#cum-functioneaza" className="lp-btn lp-btn-outline lp-btn-lg">Cum Funcționează</a>
           </div>
@@ -363,7 +366,7 @@ export default function LandingPage() {
           <div className="lp-final-cta-buttons">
             <a href="#preturi" className="lp-btn lp-btn-primary lp-btn-lg">
               Începe Acum
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
             </a>
             {isLoggedIn && isActive ? (
               <Link href="/dashboard" className="lp-btn lp-btn-outline lp-btn-lg">Dashboard</Link>

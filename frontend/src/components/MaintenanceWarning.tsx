@@ -31,7 +31,7 @@ export default function MaintenanceWarning() {
           alignItems: 'center',
           gap: '10px',
         }}>
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{verticalAlign: 'middle'}} xmlns="http://www.w3.org/2000/svg">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{verticalAlign: 'middle'}} xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <polygon points="16,4 30,28 2,28" fill="#fffbe6" stroke="#faad14" strokeWidth="2.5"/>
             <rect x="14.25" y="13" width="3.5" height="8" rx="1.75" fill="#faad14"/>
             <rect x="14.25" y="23.5" width="3.5" height="3.5" rx="1.75" fill="#faad14"/>

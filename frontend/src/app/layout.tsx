@@ -4,7 +4,7 @@ import "./globals.css";
 
 import { AuthProviderWrapper } from "@/components/AuthProviderWrapper";
 import MaintenanceWarning from "@/components/MaintenanceWarning";
-import CookieConsentBanner from "@/components/CookieConsent";
+import LazyCookieConsent from "@/components/LazyCookieConsent";
 
 const inter = Inter({
   subsets: ["latin", "latin-ext"],
@@ -37,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen antialiased font-ui">
         <MaintenanceWarning />
         <AuthProviderWrapper>{children}</AuthProviderWrapper>
-        <CookieConsentBanner />
+        <LazyCookieConsent />
       </body>
     </html>
   );
