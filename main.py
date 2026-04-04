@@ -136,6 +136,77 @@ def _trim_odds_json(odds_str: str, max_bookmakers: int = 3) -> str:
     except Exception:
         return odds_str
 
+# ── Market label mappings for section3_odds display ──
+_MARKET_LABELS = {
+    "h2h": "1X2 (Solist)",
+    "totals": "Total Goluri",
+    "spreads": "Handicap",
+    "btts": "Ambele Marchează (GG/NGG)",
+}
+
+def _build_real_odds_section(odds_str: str) -> list:
+    """Build section3_odds entirely from real bookmaker data — no AI involvement."""
+    if not odds_str or odds_str.startswith("COTE_LIPSĂ"):
+        return []
+    try:
+        bookmakers = json.loads(odds_str) if isinstance(odds_str, str) else odds_str
+        if not isinstance(bookmakers, list) or not bookmakers:
+            return []
+
+        # Collect all outcomes per (market_key, pick_label)
+        # Structure: { (market_key, pick_label): [ {bookmaker, odds} ] }
+        picks_data: dict[tuple, list] = {}
+        for bookie in bookmakers:
+            bookie_name = bookie.get("title", bookie.get("key", "Unknown"))
+            for mkt in bookie.get("markets", []):
+                mkt_key = mkt.get("key", "")
+                for outcome in mkt.get("outcomes", []):
+                    name = outcome.get("name", "")
+                    price = outcome.get("price")
+                    point = outcome.get("point")
+                    if not name or not isinstance(price, (int, float)) or price <= 0:
+                        continue
+                    pick_label = f"{name} {point}" if point is not None else name
+                    key = (mkt_key, pick_label)
+                    if key not in picks_data:
+                        picks_data[key] = []
+                    picks_data[key].append({"bookmaker": bookie_name, "odds": round(price, 2)})
+
+        # Build section3_odds entries grouped by market, sorted by market importance
+        market_order = ["h2h", "totals", "spreads", "btts"]
+        section = []
+        seen_markets = set()
+
+        for mkt_key in market_order:
+            for (mk, pick_label), quotes in picks_data.items():
+                if mk != mkt_key:
+                    continue
+                seen_markets.add(mk)
+                odds_values = [q["odds"] for q in quotes]
+                section.append({
+                    "market": _MARKET_LABELS.get(mk, mk),
+                    "pick": pick_label,
+                    "bookmaker_quotes": [{"bookmaker": q["bookmaker"], "odds": str(q["odds"])} for q in quotes[:5]],
+                    "odds_range": {"min": round(min(odds_values), 2), "max": round(max(odds_values), 2)},
+                })
+
+        # Any remaining markets not in the predefined order
+        for (mk, pick_label), quotes in picks_data.items():
+            if mk in seen_markets:
+                continue
+            odds_values = [q["odds"] for q in quotes]
+            section.append({
+                "market": _MARKET_LABELS.get(mk, mk),
+                "pick": pick_label,
+                "bookmaker_quotes": [{"bookmaker": q["bookmaker"], "odds": str(q["odds"])} for q in quotes[:5]],
+                "odds_range": {"min": round(min(odds_values), 2), "max": round(max(odds_values), 2)},
+            })
+
+        return section
+    except Exception as e:
+        print(f"⚠️ [BUILD_ODDS] Eroare: {e}")
+        return []
+
 class AnalyzeRequest(BaseModel):
     sport: Sport
     league: str = Field(min_length=1, max_length=160)
@@ -447,12 +518,11 @@ def _normalize_status(raw_status: str) -> str:
         return "finished"
     return "upcoming"
 
-def _fix_probabilities(parsed: dict, odds_str: str) -> dict:
+def _fix_probabilities(parsed: dict) -> dict:
     """
     Post-procesare: recalculează fair_odds din model_probability și 
     detectează dacă GPT a pus valori statice identice.
     Dacă fair_odds nu se potrivește cu 100/model_probability, îl corectează.
-    Also enriches section3_odds with real bookmaker data when GPT returned N/A.
     """
     import random
     
@@ -496,80 +566,6 @@ def _fix_probabilities(parsed: dict, odds_str: str) -> dict:
         parsed["section2_bets"] = bets
     except Exception as e:
         print(f"⚠️ [FIX_PROB] Eroare la post-procesare: {e}")
-    
-    # Enrich section3_odds with real bookmaker data from odds_str
-    try:
-        if odds_str and not odds_str.startswith("COTE_LIPSĂ"):
-            bookmakers = json.loads(odds_str) if isinstance(odds_str, str) else odds_str
-            if isinstance(bookmakers, list) and bookmakers:
-                # Build a lookup: market_key -> list of {bookmaker, outcome, odds}
-                market_data = {}
-                for bookie in bookmakers:
-                    bookie_name = bookie.get("title", bookie.get("key", "Unknown"))
-                    for mkt in bookie.get("markets", []):
-                        mkt_key = mkt.get("key", "")
-                        if mkt_key not in market_data:
-                            market_data[mkt_key] = {}
-                        for outcome in mkt.get("outcomes", []):
-                            out_name = outcome.get("name", "")
-                            point = outcome.get("point")
-                            pick_label = f"{out_name} {point}" if point is not None else out_name
-                            if pick_label not in market_data[mkt_key]:
-                                market_data[mkt_key][pick_label] = []
-                            market_data[mkt_key][pick_label].append({
-                                "bookmaker": bookie_name,
-                                "odds": outcome.get("price", 0)
-                            })
-
-                section3 = parsed.get("section3_odds", [])
-                if isinstance(section3, list):
-                    for entry in section3:
-                        if not isinstance(entry, dict):
-                            continue
-                        # Skip if already has valid odds_range
-                        if entry.get("odds_range") and isinstance(entry["odds_range"], dict) and entry["odds_range"].get("min"):
-                            continue
-                        
-                        pick = (entry.get("pick") or "").strip()
-                        market = (entry.get("market") or "").strip().lower()
-                        
-                        # Try to find matching market data
-                        best_quotes = None
-                        for mkt_key, picks_dict in market_data.items():
-                            # Match market key loosely
-                            mkt_matches = (
-                                ("h2h" in mkt_key and any(k in market for k in ["1x2", "victorie", "winner", "moneyline", "câștigătoare"])) or
-                                ("totals" in mkt_key and any(k in market for k in ["total", "peste", "sub", "over", "under"])) or
-                                ("spreads" in mkt_key and any(k in market for k in ["handicap", "spread"])) or
-                                ("btts" in mkt_key and any(k in market for k in ["gg", "ngg", "btts", "both", "ambele", "marcheaz"]))
-                            )
-                            if not mkt_matches:
-                                continue
-                            # Find the pick within this market
-                            for pick_label, quotes in picks_dict.items():
-                                if pick.lower() in pick_label.lower() or pick_label.lower() in pick.lower():
-                                    best_quotes = quotes
-                                    break
-                            # Also try partial match
-                            if not best_quotes:
-                                for pick_label, quotes in picks_dict.items():
-                                    pick_words = pick.lower().split()
-                                    if any(w in pick_label.lower() for w in pick_words if len(w) > 2):
-                                        best_quotes = quotes
-                                        break
-                            if best_quotes:
-                                break
-                        
-                        if best_quotes:
-                            odds_values = [q["odds"] for q in best_quotes if isinstance(q["odds"], (int, float)) and q["odds"] > 0]
-                            if odds_values:
-                                entry["odds_range"] = {"min": round(min(odds_values), 2), "max": round(max(odds_values), 2)}
-                                entry["bookmaker_quotes"] = [{"bookmaker": q["bookmaker"], "odds": str(round(q["odds"], 2))} for q in best_quotes[:5]]
-                                print(f"🔧 [FIX_ODDS] Enriched {entry.get('market')}: range {entry['odds_range']}")
-                    
-                    parsed["section3_odds"] = section3
-    except Exception as e:
-        print(f"⚠️ [FIX_ODDS] Eroare la enrichment section3: {e}")
     
     return parsed
 
@@ -1480,7 +1476,13 @@ Returnează DOAR JSON valid conform schemei din system prompt."""
         parsed_json = json.loads(content.strip())
         
         # Post-procesare: validează și corectează model_probability / fair_odds
-        parsed_json = _fix_probabilities(parsed_json, odds_str)
+        parsed_json = _fix_probabilities(parsed_json)
+        
+        # Override section3_odds with real bookmaker data (never trust AI-generated odds)
+        real_odds = _build_real_odds_section(odds_str)
+        if real_odds:
+            parsed_json["section3_odds"] = real_odds
+            print(f"✅ [ODDS] section3_odds populat cu {len(real_odds)} piețe reale")
         
         cur.execute("INSERT OR REPLACE INTO saved_analyses (match_key, analysis_json) VALUES (?, ?)", 
                     (seif_key, json.dumps(parsed_json, ensure_ascii=False)))

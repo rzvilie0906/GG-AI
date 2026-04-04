@@ -80,13 +80,7 @@ OUTPUT: Returnează EXCLUSIV JSON valid, fără markdown:
         "reasoning_bullets": ["string","string","string"]
       }
     ]
-  },
-  "section3_odds": [
-    {
-      "market": "string",
-      "pick": "string",
-      "bookmaker_quotes": [{"bookmaker":"string","odds": number}],
-      "odds_range": {"min": number, "max": number}
-    }
-  ]
-}"""
+  }
+}
+
+IMPORTANT: NU genera section3_odds — cotele reale de la case de pariuri sunt injectate automat de server din baza de date."""
