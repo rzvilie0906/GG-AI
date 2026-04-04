@@ -999,17 +999,31 @@ def get_premium_football_data(home_team, away_team, match_date):
         r_fixtures = requests.get(url_fixtures, headers=headers, timeout=10).json()
         
         fixture_id = None
+        api_home_name = home_team
+        api_away_name = away_team
 
         ignore_words = ['club', 'team', 'real', 'city', 'united', 'sporting', 'fc', 'as', 'cf', 'athletic', 'dinamo']
         valid_words = [w for w in strip_accents(home_team).split() if len(w) > 2 and w.lower() not in ignore_words]
         home_kw = max(valid_words, key=len).lower() if valid_words else strip_accents(home_team).split()[0].lower()
         
         if r_fixtures.get("response"):
+            # Try matching home team in fixture's home position first
             for f in r_fixtures["response"]:
                 h_name = strip_accents(f["teams"]["home"]["name"]).lower()
                 if home_kw in h_name:
                     fixture_id = f["fixture"]["id"]
+                    api_home_name = f["teams"]["home"]["name"]
+                    api_away_name = f["teams"]["away"]["name"]
                     break
+            # Fallback: also check away position (in case ESPN and API-Sports disagree on home/away)
+            if not fixture_id:
+                for f in r_fixtures["response"]:
+                    a_name = strip_accents(f["teams"]["away"]["name"]).lower()
+                    if home_kw in a_name:
+                        fixture_id = f["fixture"]["id"]
+                        api_home_name = f["teams"]["home"]["name"]
+                        api_away_name = f["teams"]["away"]["name"]
+                        break
                     
         if not fixture_id:
             return "Concentrează-te strict pe valoarea loturilor și pe stilul de joc istoric. Nu menționa că îți lipsesc date recente."
@@ -1021,7 +1035,6 @@ def get_premium_football_data(home_team, away_team, match_date):
             pred = r_pred["response"][0]
             home_stats = pred.get("teams", {}).get("home", {})
             away_stats = pred.get("teams", {}).get("away", {})
-            comp = pred.get("comparison", {})
             
             home_id = home_stats.get("id")
             away_id = away_stats.get("id")
@@ -1029,7 +1042,7 @@ def get_premium_football_data(home_team, away_team, match_date):
             url_inj = f"https://v3.football.api-sports.io/injuries?fixture={fixture_id}"
             r_inj = requests.get(url_inj, headers=headers, timeout=5).json()
             
-            absenti = {"gazde": [], "oaspeti": []}
+            absenti = {api_home_name: [], api_away_name: []}
             if r_inj.get("response"):
                 for inj in r_inj["response"]:
                     team_id = inj.get("team", {}).get("id")
@@ -1037,26 +1050,28 @@ def get_premium_football_data(home_team, away_team, match_date):
                     reason = inj.get("player", {}).get("reason", "Indisponibil")
                     
                     if team_id == home_id:
-                        absenti["gazde"].append(f"{player_name} ({reason})")
+                        absenti[api_home_name].append(f"{player_name} ({reason})")
                     elif team_id == away_id:
-                        absenti["oaspeti"].append(f"{player_name} ({reason})")
+                        absenti[api_away_name].append(f"{player_name} ({reason})")
+
+            # Get actual goal averages — these are REAL stats, not model predictions
+            home_goals_for = home_stats.get("league", {}).get("goals", {}).get("for", {}).get("average", {}).get("total")
+            home_goals_against = home_stats.get("league", {}).get("goals", {}).get("against", {}).get("average", {}).get("total")
+            away_goals_for = away_stats.get("league", {}).get("goals", {}).get("for", {}).get("average", {}).get("total")
+            away_goals_against = away_stats.get("league", {}).get("goals", {}).get("against", {}).get("average", {}).get("total")
 
             stats_premium = {
                 "sfat_matematic_API": pred.get("predictions", {}).get("advice"),
                 "jucatori_absenti_meci_azi": absenti,
-                "comparatie_stil_joc_si_forta": {
-                    "forta_ofensiva": {"gazde": comp.get("att", {}).get("home"), "oaspeti": comp.get("att", {}).get("away")},
-                    "forta_defensiva": {"gazde": comp.get("def", {}).get("home"), "oaspeti": comp.get("def", {}).get("away")}
-                },
-                "gazde_statistici_sezon": {
+                f"statistici_sezon_{api_home_name}": {
                     "forma_sir_meciuri": home_stats.get("league", {}).get("form"),
-                    "medie_goluri_marcate": home_stats.get("league", {}).get("goals", {}).get("for", {}).get("average", {}).get("total"),
-                    "medie_goluri_primite": home_stats.get("league", {}).get("goals", {}).get("against", {}).get("average", {}).get("total")
+                    "medie_goluri_marcate": home_goals_for,
+                    "medie_goluri_primite": home_goals_against
                 },
-                "oaspeti_statistici_sezon": {
+                f"statistici_sezon_{api_away_name}": {
                     "forma_sir_meciuri": away_stats.get("league", {}).get("form"),
-                    "medie_goluri_marcate": away_stats.get("league", {}).get("goals", {}).get("for", {}).get("average", {}).get("total"),
-                    "medie_goluri_primite": away_stats.get("league", {}).get("goals", {}).get("against", {}).get("average", {}).get("total")
+                    "medie_goluri_marcate": away_goals_for,
+                    "medie_goluri_primite": away_goals_against
                 },
                 "istoric_direct_h2h_ultimele_3": []
             }
@@ -1439,13 +1454,13 @@ DATA: {data.match_date}
 SPORT: {data.sport}
 
 FORMĂ MATEMATICĂ (server-calculated, nu modifica):
-- Gazde: {intel_pool['forma_exacta_gazde']}
-- Oaspeți: {intel_pool['forma_exacta_oaspeti']}
+- {data.home_team}: {intel_pool['forma_exacta_gazde']}
+- {data.away_team}: {intel_pool['forma_exacta_oaspeti']}
 
 COTE LIVE:
 {odds_trimmed}
 
-DATE OFICIALE:
+DATE STATISTICE (din API extern — folosește mediile de goluri ca referință principală, ignoră sfatul modelului extern dacă contrazice cifrele):
 {live_intel}
 {f"Note utilizator: {data.extra_context}" if data.extra_context else ""}
 Returnează DOAR JSON valid conform schemei din system prompt."""
@@ -1484,7 +1499,54 @@ Returnează DOAR JSON valid conform schemei din system prompt."""
         if 'conn' in locals(): conn.close()
         print(f"❌ [EROARE AI] {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+# ── Admin: Purge cached analysis ─────────────────────────────
+@app.delete("/admin/analysis/{match_key:path}")
+def admin_delete_analysis(
+    match_key: str,
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
+    """Delete a cached analysis by exact match_key. Requires APP_API_KEY."""
+    require_api_key(x_api_key)
+    conn = _db_connect()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM saved_analyses WHERE match_key = ?", (match_key,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    return {"deleted": deleted, "match_key": match_key}
+
+@app.delete("/admin/analysis-search")
+def admin_delete_analysis_search(
+    q: str = Query(..., description="Substring to match in match_key"),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
+    """Delete all cached analyses whose match_key contains the given substring."""
+    require_api_key(x_api_key)
+    conn = _db_connect()
+    cur = conn.cursor()
+    # First show what will be deleted
+    cur.execute("SELECT match_key FROM saved_analyses WHERE match_key LIKE ?", (f"%{q}%",))
+    keys = [r["match_key"] for r in cur.fetchall()]
+    cur.execute("DELETE FROM saved_analyses WHERE match_key LIKE ?", (f"%{q}%",))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    return {"deleted": deleted, "query": q, "keys_removed": keys}
+
+@app.get("/admin/analyses")
+def admin_list_analyses(
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
+    """List all cached analyses (match_key and saved_at timestamp)."""
+    require_api_key(x_api_key)
+    conn = _db_connect()
+    cur = conn.cursor()
+    cur.execute("SELECT match_key, saved_at FROM saved_analyses ORDER BY saved_at DESC")
+    rows = [{"match_key": r["match_key"], "saved_at": r["saved_at"]} for r in cur.fetchall()]
+    conn.close()
+    return {"count": len(rows), "analyses": rows}
+
 @app.post("/analyze-ticket")
 async def analyze_custom_ticket(
     data: VerifyTicketRequest,
