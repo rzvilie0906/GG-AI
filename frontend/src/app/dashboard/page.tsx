@@ -244,34 +244,44 @@ export default function Dashboard() {
     setAnalysisNotAvailable(null);
     setPickInput("");
 
-    // ── Check if analysis window is open (kickoff - 24h) ──
+    // ── Check if analysis window is open (daily sync at 10:00 RO) ──
+    // Matches from 10:00 RO today to 09:59 RO tomorrow are analyzable after today's 10:00 sync.
     const now = new Date();
+    const nowRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
     const startTimeUtc = fixture.start_time_utc;
+
     if (startTimeUtc) {
       const kickoff = new Date(startTimeUtc);
-      const windowOpensAt = new Date(kickoff.getTime() - 24 * 60 * 60 * 1000);
-      if (now < windowOpensAt) {
-        const diffMs = windowOpensAt.getTime() - now.getTime();
+      const kickoffRO = new Date(kickoff.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
+      // Matches 10:00-23:59 RO → same day's sync; 00:00-09:59 RO → previous day's sync
+      const syncDate = new Date(kickoffRO);
+      if (kickoffRO.getHours() < 10) {
+        syncDate.setDate(syncDate.getDate() - 1);
+      }
+      // Build sync time: syncDate at 10:00 RO (approximate via offset)
+      const roOffset = nowRO.getTime() - now.getTime() + now.getTimezoneOffset() * 60000;
+      const syncLocal = new Date(syncDate.getFullYear(), syncDate.getMonth(), syncDate.getDate(), 10, 0, 0);
+      const syncUTC = new Date(syncLocal.getTime() - roOffset);
+
+      if (now < syncUTC) {
+        const diffMs = syncUTC.getTime() - now.getTime();
         const hours = Math.floor(diffMs / 3600000);
         const mins = Math.floor((diffMs % 3600000) / 60000);
         const etaStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-        const dd = String(kickoff.getDate()).padStart(2, "0");
-        const mm = String(kickoff.getMonth() + 1).padStart(2, "0");
-        const yyyy = kickoff.getFullYear();
-        const hh = String(windowOpensAt.getHours()).padStart(2, "0");
-        const mi = String(windowOpensAt.getMinutes()).padStart(2, "0");
+        const dd = String(syncDate.getDate()).padStart(2, "0");
+        const mm = String(syncDate.getMonth() + 1).padStart(2, "0");
+        const yyyy = syncDate.getFullYear();
         setAnalysisNotAvailable({
-          message: `Analiza devine disponibilă cu 24h înainte de meci — de la ${dd}.${mm}.${yyyy} ${hh}:${mi}.`,
+          message: `Analiza va fi disponibilă pe ${dd}.${mm}.${yyyy} după sincronizarea zilnică (~10:00).`,
           eta: etaStr,
-          availableAt: windowOpensAt.toISOString(),
+          availableAt: syncUTC.toISOString(),
         });
         return;
       }
     }
 
     const matchDate = selectedDate || (() => {
-      const todayRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
-      return `${todayRO.getFullYear()}-${String(todayRO.getMonth() + 1).padStart(2, "0")}-${String(todayRO.getDate()).padStart(2, "0")}`;
+      return `${nowRO.getFullYear()}-${String(nowRO.getMonth() + 1).padStart(2, "0")}-${String(nowRO.getDate()).padStart(2, "0")}`;
     })();
 
     setAnalysisLoading(true);

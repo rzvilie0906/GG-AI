@@ -1389,9 +1389,14 @@ async def analyze(
     else:
         require_api_key(x_api_key)
 
-    # ── Restrict analysis to kickoff-24h window ──
-    # Analysis becomes available 24 hours before the match kickoff time.
-    # Parse start_time_utc from extra_context or look it up from DB.
+    # ── Restrict analysis to daily sync window (10:00 RO → 09:59 RO next day) ──
+    # After the daily sync at ~10:00 Romania, analyses are available for all
+    # matches kicking off between 10:00 RO today and 09:59 RO tomorrow.
+    # A match at e.g. 05:07 RO on Apr 6 belongs to the Apr 5 10:00 window.
+    ro = _ro_tz()
+    now_ro = datetime.now(ro)
+
+    # Parse kickoff time from extra_context or DB
     kickoff_utc = None
     if data.extra_context:
         try:
@@ -1404,7 +1409,6 @@ async def analyze(
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # Fallback: look up from events table
     if kickoff_utc is None:
         try:
             conn_ev = _db_connect()
@@ -1422,28 +1426,32 @@ async def analyze(
         except Exception:
             pass
 
-    # Final fallback: assume match_date at 00:00 UTC (most conservative — opens 24h before that)
-    if kickoff_utc is None:
-        kickoff_utc = datetime(data.match_date.year, data.match_date.month, data.match_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    # Determine which 10:00 RO sync covers this match
+    if kickoff_utc:
+        kickoff_ro = kickoff_utc.astimezone(ro)
+        # Matches 10:00-23:59 → same day's 10:00 sync; 00:00-09:59 → previous day's 10:00 sync
+        if kickoff_ro.hour >= 10:
+            sync_day = kickoff_ro.date()
+        else:
+            sync_day = (kickoff_ro - timedelta(days=1)).date()
+    else:
+        # Fallback: match_date at 10:00 RO
+        sync_day = data.match_date
 
-    now_utc = datetime.now(timezone.utc)
-    window_opens_at = kickoff_utc - timedelta(hours=24)
+    available_at_ro = datetime(sync_day.year, sync_day.month, sync_day.day, 10, 0, 0, tzinfo=ro)
 
-    if now_utc < window_opens_at:
-        diff = window_opens_at - now_utc
+    if now_ro < available_at_ro:
+        diff = available_at_ro - now_ro
         hours_left = int(diff.total_seconds() // 3600)
         mins_left = int((diff.total_seconds() % 3600) // 60)
         eta_str = f"{hours_left}h {mins_left}m" if hours_left > 0 else f"{mins_left}m"
-        ro = _ro_tz()
-        window_opens_ro = window_opens_at.astimezone(ro)
         raise HTTPException(
             status_code=422,
             detail=json.dumps({
                 "code": "ANALYSIS_NOT_AVAILABLE",
-                "message": f"Analiza devine disponibilă cu 24h înainte de meci — de la {window_opens_ro.strftime('%d.%m.%Y %H:%M')}.",
+                "message": f"Analiza va fi disponibilă pe {available_at_ro.strftime('%d.%m.%Y')} după sincronizarea zilnică (~10:00).",
                 "eta": eta_str,
-                "available_at": window_opens_at.isoformat(),
-                "kickoff_utc": kickoff_utc.isoformat(),
+                "available_at": available_at_ro.isoformat(),
             })
         )
 
