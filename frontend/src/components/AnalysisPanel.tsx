@@ -237,7 +237,7 @@ export default function AnalysisPanel({
               {analysisNotAvailable.message}
             </div>
             <div className="text-text-secondary text-xs mb-4 leading-relaxed">
-              Analizele sunt generate zilnic pe baza datelor actualizate — cote, statistici și formă recentă. Pentru predicții cât mai precise, analiza devine disponibilă doar în ziua meciului.
+              Analizele sunt generate pe baza datelor actualizate — cote, statistici și formă recentă. Pentru predicții cât mai precise, analiza devine disponibilă cu 24 de ore înainte de meci.
             </div>
             {analysisNotAvailable.availableAt && (
               <div className="inline-flex items-center gap-3 bg-surface-elevated/60 border border-[rgba(255,255,255,0.08)] px-6 py-4 rounded-xl">

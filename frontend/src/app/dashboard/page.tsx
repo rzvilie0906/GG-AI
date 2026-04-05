@@ -244,39 +244,35 @@ export default function Dashboard() {
     setAnalysisNotAvailable(null);
     setPickInput("");
 
-    // ── Check if match is for today (Romania time) ──
+    // ── Check if analysis window is open (kickoff - 24h) ──
     const now = new Date();
-    const todayRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
-    const todayISO = `${todayRO.getFullYear()}-${String(todayRO.getMonth() + 1).padStart(2, "0")}-${String(todayRO.getDate()).padStart(2, "0")}`;
-    const matchDate = selectedDate || todayISO;
-
-    if (matchDate !== todayISO) {
-      // Calculate ETA until analysis becomes available (match day at 10:00 Romania)
-      const [y, m, d] = matchDate.split("-").map(Number);
-      const availableAt = new Date(Date.UTC(y, m - 1, d, 7, 0, 0)); // 10:00 Romania ≈ 07:00 UTC (summer) or 08:00 UTC (winter)
-      // More precise: use locale conversion
-      const availableLocal = new Date(`${matchDate}T10:00:00`);
-      // Build Romania 10:00 as UTC
-      const roOffset = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Bucharest" })).getTime() - new Date().getTime() + new Date().getTimezoneOffset() * 60000;
-      const availableUTC = new Date(availableLocal.getTime() - roOffset);
-      
-      const diffMs = availableUTC.getTime() - now.getTime();
-      let etaStr: string;
-      if (diffMs > 0) {
+    const startTimeUtc = fixture.start_time_utc;
+    if (startTimeUtc) {
+      const kickoff = new Date(startTimeUtc);
+      const windowOpensAt = new Date(kickoff.getTime() - 24 * 60 * 60 * 1000);
+      if (now < windowOpensAt) {
+        const diffMs = windowOpensAt.getTime() - now.getTime();
         const hours = Math.floor(diffMs / 3600000);
         const mins = Math.floor((diffMs % 3600000) / 60000);
-        etaStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-      } else {
-        etaStr = "curând";
+        const etaStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        const dd = String(kickoff.getDate()).padStart(2, "0");
+        const mm = String(kickoff.getMonth() + 1).padStart(2, "0");
+        const yyyy = kickoff.getFullYear();
+        const hh = String(windowOpensAt.getHours()).padStart(2, "0");
+        const mi = String(windowOpensAt.getMinutes()).padStart(2, "0");
+        setAnalysisNotAvailable({
+          message: `Analiza devine disponibilă cu 24h înainte de meci — de la ${dd}.${mm}.${yyyy} ${hh}:${mi}.`,
+          eta: etaStr,
+          availableAt: windowOpensAt.toISOString(),
+        });
+        return;
       }
-
-      setAnalysisNotAvailable({
-        message: `Analiza pentru acest meci va fi disponibilă pe ${d.toString().padStart(2, "0")}.${m.toString().padStart(2, "0")}.${y} după sincronizarea zilnică (~10:00).`,
-        eta: etaStr,
-        availableAt: availableUTC.toISOString(),
-      });
-      return;
     }
+
+    const matchDate = selectedDate || (() => {
+      const todayRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
+      return `${todayRO.getFullYear()}-${String(todayRO.getMonth() + 1).padStart(2, "0")}-${String(todayRO.getDate()).padStart(2, "0")}`;
+    })();
 
     setAnalysisLoading(true);
     isAnalyzingRef.current = true;
