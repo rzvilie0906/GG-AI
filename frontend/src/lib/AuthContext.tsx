@@ -126,6 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           plan: null,
           status: "inactive",
           current_period_end: null,
+          cancel_at_period_end: false,
+          has_access: false,
         });
       }
     } catch {
@@ -134,6 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           plan: null,
           status: "inactive",
           current_period_end: null,
+          cancel_at_period_end: false,
+          has_access: false,
         });
       }
     } finally {

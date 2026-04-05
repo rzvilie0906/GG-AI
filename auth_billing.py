@@ -548,6 +548,7 @@ def get_user_subscription(uid: str) -> dict:
         try:
             fb_user = firebase_auth.get_user(uid)
             if fb_user.email:
+                print(f"🔄 [Recovery] User {uid} ({fb_user.email}) not in DB — recreating from Firebase", flush=True)
                 fb_profile = _get_profile_from_firebase(uid)
                 _upsert_user(
                     uid, fb_user.email, "firebase",
@@ -559,11 +560,15 @@ def get_user_subscription(uid: str) -> dict:
                     try:
                         customers = stripe.Customer.list(email=fb_user.email, limit=1)
                         if customers.data:
-                            _update_user_subscription(uid, stripe_customer_id=customers.data[0].id)
+                            cust_id = customers.data[0].id
+                            _update_user_subscription(uid, stripe_customer_id=cust_id)
+                            print(f"✅ [Recovery] Linked Stripe customer {cust_id} for {fb_user.email}", flush=True)
+                        else:
+                            print(f"ℹ️ [Recovery] No Stripe customer found for email {fb_user.email}", flush=True)
                     except Exception as e:
                         print(f"⚠️ [Recovery] Stripe customer lookup failed for {fb_user.email}: {e}", flush=True)
                 user = _get_user(uid)
-                print(f"🔄 [Recovery] Recreated user {uid} ({fb_user.email}) from Firebase after DB reset", flush=True)
+                print(f"✅ [Recovery] User recreated: stripe_customer_id={user.get('stripe_customer_id') if user else 'N/A'}", flush=True)
         except Exception as e:
             print(f"⚠️ [Recovery] Could not look up Firebase user {uid}: {e}", flush=True)
 
@@ -581,47 +586,77 @@ def get_user_subscription(uid: str) -> dict:
     status = user.get("status", "inactive")
     cancel_at = bool(user.get("cancel_at_period_end", 0))
 
-    # ── Fallback: sync from Stripe if local state looks wrong ─────────────────
+    # ── Sync from Stripe when local state is incomplete or stale ──────────────
     # Triggers when:
-    #   1. User has no active access at all (status not active, period ended), OR
-    #   2. User has access but DB is missing plan data (caused by the old cancel
-    #      bug that set plan=None + status=canceled immediately)
-    needs_stripe_sync = (
-        (status != "active" and not _has_active_access(user))
-        or (not plan and user.get("stripe_customer_id"))
+    #   1. Status is not "active" and user has no access (inactive/expired), OR
+    #   2. Plan data is missing (DB was reset, or old cancel bug wiped it), OR
+    #   3. Status was set to "canceled" but Stripe still has an active subscription
+    has_stripe = bool(user.get("stripe_customer_id")) and bool(stripe.api_key)
+    needs_stripe_sync = has_stripe and (
+        status not in ("active",)  # always sync if not explicitly active
+        or not plan                # plan is missing
     )
-    if needs_stripe_sync and user.get("stripe_customer_id") and stripe.api_key:
+    if needs_stripe_sync:
         try:
+            # First try: look for active subscriptions (includes cancel_at_period_end=true)
             subs = stripe.Subscription.list(
                 customer=user["stripe_customer_id"],
                 status="active",
                 limit=1,
             )
+            # Second try: if no active subs, check for any recent subscription
+            # (handles edge case where Stripe webhook delay changed status)
+            if not subs.data:
+                subs = stripe.Subscription.list(
+                    customer=user["stripe_customer_id"],
+                    limit=1,
+                )
             if subs.data:
                 sub = subs.data[0]
+                stripe_status = sub.get("status", "canceled")
                 price_id = sub["items"]["data"][0]["price"]["id"]
-                plan = PRICE_TO_PLAN.get(price_id, "unknown")
-                status = "active"
-                cancel_at = bool(sub.get("cancel_at_period_end", False))
+                synced_plan = PRICE_TO_PLAN.get(price_id)
+                cancel_at_flag = bool(sub.get("cancel_at_period_end", False))
                 period_end = datetime.fromtimestamp(
                     sub["current_period_end"], tz=timezone.utc
                 ).isoformat()
-                # Sync to DB so we don't hit Stripe on every call
-                _update_user_subscription(
-                    uid,
-                    stripe_subscription_id=sub["id"],
-                    plan=plan,
-                    status="active",
-                    current_period_end=period_end,
-                    cancel_at_period_end=1 if cancel_at else 0,
-                )
-                user = _get_user(uid)  # refresh
-                print(f"🔄 [Sync] User {uid} synced from Stripe: {plan}/active", flush=True)
+
+                # Only sync if the subscription is usable (active, or canceled but period hasn't ended)
+                period_end_dt = datetime.fromtimestamp(sub["current_period_end"], tz=timezone.utc)
+                if stripe_status == "active" or datetime.now(timezone.utc) < period_end_dt:
+                    plan = synced_plan or plan or "unknown"
+                    status = stripe_status
+                    cancel_at = cancel_at_flag
+                    _update_user_subscription(
+                        uid,
+                        stripe_subscription_id=sub["id"],
+                        plan=plan,
+                        status=status,
+                        current_period_end=period_end,
+                        cancel_at_period_end=1 if cancel_at else 0,
+                    )
+                    user = _get_user(uid)
+                    print(f"🔄 [Sync] User {uid} synced from Stripe: plan={plan}, status={status}, "
+                          f"cancel_at_period_end={cancel_at}, period_end={period_end}", flush=True)
+                else:
+                    print(f"ℹ️ [Sync] User {uid}: Stripe sub found but expired (status={stripe_status}, "
+                          f"period_end={period_end})", flush=True)
+            else:
+                print(f"ℹ️ [Sync] User {uid}: No Stripe subscriptions found for customer "
+                      f"{user['stripe_customer_id']}", flush=True)
         except Exception as e:
             print(f"⚠️ [Sync] Failed to check Stripe for {uid}: {e}", flush=True)
 
+    # ── Compute final access decision ─────────────────────────────────────────
     has_access = _has_active_access(user) if user else False
     limits = TIER_LIMITS.get(plan) if plan and has_access else None
+
+    # Safety net: if user has access but we lost the plan (shouldn't happen after
+    # sync, but guard against it), fallback to minimum tier so they aren't locked out
+    if has_access and not plan:
+        print(f"⚠️ [Safety] User {uid} has access but no plan — defaulting to 'weekly'", flush=True)
+        plan = "weekly"
+        limits = TIER_LIMITS["weekly"]
 
     return {
         "plan": plan if has_access else None,
@@ -1156,8 +1191,23 @@ def _handle_subscription_updated(subscription: dict):
     cancel_at = 1 if subscription.get("cancel_at_period_end", False) else 0
 
     user = _get_user_by_stripe_customer(customer_id)
+
+    # If user not found (DB was wiped), try to recover via subscription metadata
     if not user:
-        print(f"⚠️ [Webhook] subscription.updated: No user found for customer {customer_id}")
+        uid = subscription.get("metadata", {}).get("firebase_uid")
+        if uid and firebase_app:
+            try:
+                fb_user = firebase_auth.get_user(uid)
+                if fb_user.email:
+                    _upsert_user(uid, fb_user.email, "firebase")
+                    _update_user_subscription(uid, stripe_customer_id=customer_id)
+                    user = _get_user(uid)
+                    print(f"🔄 [Webhook] Recovered user {uid} from Firebase during subscription.updated", flush=True)
+            except Exception as e:
+                print(f"⚠️ [Webhook] subscription.updated: Could not recover user for customer {customer_id}: {e}", flush=True)
+
+    if not user:
+        print(f"⚠️ [Webhook] subscription.updated: No user found for customer {customer_id}", flush=True)
         return
 
     _update_user_subscription(
