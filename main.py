@@ -35,6 +35,7 @@ _ = load_dotenv(find_dotenv())
 
 from openai import OpenAI
 from prompts import generate_system_prompt
+from prediction_utils import extract_canonical_prediction, check_contradiction, validate_ticket_coherence
 from auth_billing import (
     billing_router, init_users_db, verify_firebase_token,
     get_user_subscription, check_analysis_quota, check_risk_quota,
@@ -1630,6 +1631,7 @@ async def analyze_custom_ticket(
     conn = _db_connect()
     cur = conn.cursor()
     enriched_picks = []
+    match_analyses = {}  # match_name -> analysis JSON for contradiction check
 
     for p in data.picks:
         team_words = strip_accents(p.match.split(" vs ")[0]).split()
@@ -1643,6 +1645,7 @@ async def analyze_custom_ticket(
         if row:
             try:
                 ans = json.loads(row[0])
+                match_analyses[p.match] = ans
                 main_bet = ans.get('section2_bets', {}).get('main_bet', {})
                 secondary = ans.get('section2_bets', {}).get('secondary_bets', [])
                 sec_summary = "; ".join(f"{s.get('market')}-{s.get('pick')}(p={s.get('model_probability')}%)" for s in secondary[:2]) if secondary else ""
@@ -1655,18 +1658,40 @@ async def analyze_custom_ticket(
         enriched_picks.append(f"{p.match} ({p.league}) | Pariu: {p.pick}{analysis_context}")
     
     conn.close()
+
+    # ── Deterministic contradiction detection (runs BEFORE LLM) ──
+    det_weak_links = []
+    for p in data.picks:
+        if p.match in match_analyses:
+            canonical = extract_canonical_prediction(match_analyses[p.match])
+            contradiction = check_contradiction(p.pick, p.league, canonical)
+            if contradiction:
+                det_weak_links.append({
+                    "match": p.match,
+                    "reason": f"Pariul tău ({contradiction['user_pick']}) contrazice recomandarea AI ({contradiction['ai_market']}: {contradiction['ai_pick']}, probabilitate {contradiction['ai_probability']}%).",
+                    "_severity": contradiction["severity"],
+                })
+
     ticket_details = "\n".join(enriched_picks)
 
-    system_prompt = """Ești Risk Manager pariuri sportive. Validezi biletul utilizatorului comparând pariurile lui cu recomandările AI atașate (market, pick, probabilitate).
+    # ── Deterministic pre-contradictions injected into the LLM prompt ──
+    contradiction_note = ""
+    if det_weak_links:
+        contradiction_note = "\n\nCONTRADICȚII DETECTATE AUTOMAT (include obligatoriu în weak_links):\n"
+        for wl in det_weak_links:
+            contradiction_note += f"- {wl['match']}: {wl['reason']}\n"
+
+    system_prompt = f"""Ești Risk Manager pariuri sportive. Validezi biletul utilizatorului comparând pariurile lui cu recomandările AI atașate (market, pick, probabilitate).
 REGULI:
 1. Datele AI atașate sunt 100% corecte pentru meciul respectiv.
 2. Dacă pariul utilizatorului se aliniază cu recomandarea AI (sau e logic), validează-l.
 3. Penalizează în weak_links DOAR dacă pariul e complet invers față de AI.
 4. Dacă biletul e bun, weak_links = [] și confidence_score mare (8-10).
+5. Contradicțiile detectate automat de sistem sunt OBLIGATORIU incluse în weak_links — nu le ignora.
 Răspunde EXCLUSIV JSON valid:
-{"general_verdict":"string","weak_links":[{"match":"string","reason":"string"}],"confidence_score":number(1-10)}"""
+{{"general_verdict":"string","weak_links":[{{"match":"string","reason":"string"}}],"confidence_score":number(1-10)}}"""
 
-    user_input = f"Verifică biletul:\n{ticket_details}"
+    user_input = f"Verifică biletul:\n{ticket_details}{contradiction_note}"
 
     try:
         response = client.chat.completions.create(
@@ -1686,6 +1711,26 @@ Răspunde EXCLUSIV JSON valid:
             content = content.split("```")[1].split("```")[0]
         
         result = json.loads(content.strip())
+
+        # ── Post-LLM enforcement: merge any deterministic contradictions
+        # the LLM might have omitted back into weak_links ──
+        llm_weak_matches = {wl.get("match", "").lower() for wl in (result.get("weak_links") or [])}
+        for det_wl in det_weak_links:
+            if det_wl["match"].lower() not in llm_weak_matches:
+                if result.get("weak_links") is None:
+                    result["weak_links"] = []
+                result["weak_links"].append({"match": det_wl["match"], "reason": det_wl["reason"]})
+
+        # If deterministic contradictions exist, cap the confidence score
+        if det_weak_links:
+            high_severity = any(wl["_severity"] == "high" for wl in det_weak_links)
+            max_score = 4 if high_severity else 6
+            try:
+                current = int(result.get("confidence_score", 10))
+                if current > max_score:
+                    result["confidence_score"] = max_score
+            except (ValueError, TypeError):
+                pass
 
         # Track usage for Firebase-authenticated users
         if firebase_uid:

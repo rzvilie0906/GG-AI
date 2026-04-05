@@ -55,6 +55,7 @@ export interface DailyPick {
   market: string;
   pick: string;
   odds: string;
+  reasoning?: string;
 }
 
 export interface DailyTicketData {
