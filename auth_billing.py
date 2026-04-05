@@ -614,6 +614,22 @@ def get_user_subscription(uid: str) -> dict:
             "tier_limits": None,
         }
 
+    # ── Link Stripe customer if missing ───────────────────────────────────────
+    # The whitelist check may have created the user record (to look up their
+    # email) without linking their Stripe customer.  Ensure it's linked here.
+    if not user.get("stripe_customer_id") and stripe.api_key:
+        user_email = user.get("email", "")
+        if user_email:
+            try:
+                customers = stripe.Customer.list(email=user_email, limit=1)
+                if customers.data:
+                    cust_id = customers.data[0].id
+                    _update_user_subscription(uid, stripe_customer_id=cust_id)
+                    user = _get_user(uid)
+                    print(f"🔗 [Link] Linked Stripe customer {cust_id} for {user_email}", flush=True)
+            except Exception as e:
+                print(f"⚠️ [Link] Stripe customer lookup failed for {user_email}: {e}", flush=True)
+
     plan = user.get("plan")
     status = user.get("status", "inactive")
     cancel_at = bool(user.get("cancel_at_period_end", 0))
