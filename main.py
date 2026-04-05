@@ -832,11 +832,13 @@ async def get_daily_ticket(
         require_api_key(x_api_key)
     
     # Ticket window: 10:00 today -> 10:00 tomorrow (Romanian time)
-    now = datetime.now()
-    if now.hour < 10:
-        ticket_date = (now - timedelta(days=1)).strftime("%d.%m.%Y")
+    # Ticket window: 10:00 today -> 10:00 tomorrow (Romanian time)
+    ro = _ro_tz()
+    now_ro = datetime.now(ro)
+    if now_ro.hour < 10:
+        ticket_date = (now_ro - timedelta(days=1)).strftime("%d.%m.%Y")
     else:
-        ticket_date = now.strftime("%d.%m.%Y")
+        ticket_date = now_ro.strftime("%d.%m.%Y")
     valid_types = ["mixed", "football", "basketball", "hockey"]
     if type not in valid_types: type = "mixed"
     file_name = f"daily_ticket_{type}.json"

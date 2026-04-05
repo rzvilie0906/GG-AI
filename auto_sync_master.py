@@ -203,5 +203,18 @@ def main():
     except Exception as e:
         print(f"⚠️ [WARN] Upload Firestore eșuat (non-fatal): {e}")
 
+    # ── Auto-generate daily tickets immediately after sync ──
+    print("\n▶️ PASUL 4: Generare bilete zilnice ...")
+    try:
+        result = subprocess.run([sys.executable, "generate_ticket.py"], capture_output=True, text=True, encoding="utf-8")
+        if result.returncode == 0:
+            print("✅ [OK] Biletele zilnice au fost generate și uploadate în Firestore.")
+        else:
+            print(f"❌ [EROARE] generate_ticket.py a eșuat (cod={result.returncode})")
+            if result.stderr:
+                print(f"   stderr: {result.stderr[:500]}")
+    except Exception as e:
+        print(f"❌ [EROARE] Nu s-a putut rula generate_ticket.py: {e}")
+
 if __name__ == "__main__":
     main()
