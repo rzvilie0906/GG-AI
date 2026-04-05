@@ -535,6 +535,8 @@ def get_user_subscription(uid: str) -> dict:
                 "plan": "elite",
                 "status": "active",
                 "current_period_end": (datetime.now(timezone.utc) + timedelta(days=365*10)).isoformat(),
+                "cancel_at_period_end": False,
+                "has_access": True,
                 "tier_limits": TIER_LIMITS["elite"],
             }
     # ───────────────────────────────────────────────────────────────────────────
