@@ -508,13 +508,26 @@ def get_user_subscription(uid: str) -> dict:
     """Get subscription info with tier limits for a user."""
     user = _get_user(uid)
 
-    # ── Whitelist: Permanent Elite Access ──────────────────────────────────────
+    # ── Whitelist: Elite Access ──────────────────────────────────────────────
     # Runs BEFORE the user-not-found check so whitelisted users work even
     # after a Railway redeploy that wipes the SQLite DB.
+    #
+    # WHITELISTED_EMAILS        = permanent elite (comma-separated emails)
+    # WHITELIST_TIMED           = time-limited elite (email:YYYY-MM-DD,email2:YYYY-MM-DD)
     whitelist_env = os.environ.get("WHITELISTED_EMAILS", "")
     whitelisted_emails = {e.strip().lower() for e in whitelist_env.split(",") if e.strip()}
 
-    if whitelisted_emails:
+    timed_env = os.environ.get("WHITELIST_TIMED", "")
+    timed_whitelist: dict[str, str] = {}
+    for entry in timed_env.split(","):
+        entry = entry.strip()
+        if ":" in entry:
+            email_part, date_part = entry.rsplit(":", 1)
+            timed_whitelist[email_part.strip().lower()] = date_part.strip()
+
+    all_whitelist = whitelisted_emails | set(timed_whitelist.keys())
+
+    if all_whitelist:
         # Get email from local DB, or fall back to Firebase Auth
         user_email = ""
         if user:
@@ -530,15 +543,34 @@ def get_user_subscription(uid: str) -> dict:
             except Exception as e:
                 print(f"⚠️ [Whitelist] Could not look up Firebase user {uid}: {e}", flush=True)
 
-        if user_email and user_email in whitelisted_emails:
-            return {
-                "plan": "elite",
-                "status": "active",
-                "current_period_end": (datetime.now(timezone.utc) + timedelta(days=365*10)).isoformat(),
-                "cancel_at_period_end": False,
-                "has_access": True,
-                "tier_limits": TIER_LIMITS["elite"],
-            }
+        if user_email and user_email in all_whitelist:
+            # Determine expiry
+            if user_email in timed_whitelist:
+                try:
+                    expiry = datetime.fromisoformat(timed_whitelist[user_email]).replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) > expiry:
+                        print(f"ℹ️ [Whitelist] Timed whitelist expired for {user_email} (expired {timed_whitelist[user_email]})", flush=True)
+                    else:
+                        return {
+                            "plan": "elite",
+                            "status": "active",
+                            "current_period_end": expiry.isoformat(),
+                            "cancel_at_period_end": False,
+                            "has_access": True,
+                            "tier_limits": TIER_LIMITS["elite"],
+                        }
+                except ValueError:
+                    print(f"⚠️ [Whitelist] Invalid date for {user_email}: {timed_whitelist[user_email]}", flush=True)
+            else:
+                # Permanent whitelist
+                return {
+                    "plan": "elite",
+                    "status": "active",
+                    "current_period_end": (datetime.now(timezone.utc) + timedelta(days=365*10)).isoformat(),
+                    "cancel_at_period_end": False,
+                    "has_access": True,
+                    "tier_limits": TIER_LIMITS["elite"],
+                }
     # ───────────────────────────────────────────────────────────────────────────
 
     # ── Auto-recover user after Railway redeploy wiped SQLite DB ──────────────
