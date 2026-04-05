@@ -506,7 +506,10 @@ def _has_active_access(user: dict) -> bool:
 
 def get_user_subscription(uid: str) -> dict:
     """Get subscription info with tier limits for a user."""
+    _dbg: list[str] = []          # collect debug breadcrumbs
+
     user = _get_user(uid)
+    _dbg.append(f"1_user_in_db={'YES' if user else 'NO'}")
 
     # ── Whitelist: Elite Access ──────────────────────────────────────────────
     # Runs BEFORE the user-not-found check so whitelisted users work even
@@ -526,6 +529,7 @@ def get_user_subscription(uid: str) -> dict:
             timed_whitelist[email_part.strip().lower()] = date_part.strip()
 
     all_whitelist = whitelisted_emails | set(timed_whitelist.keys())
+    _dbg.append(f"2_whitelist_count={len(all_whitelist)}")
 
     if all_whitelist:
         # Get email from local DB, or fall back to Firebase Auth
@@ -544,6 +548,7 @@ def get_user_subscription(uid: str) -> dict:
                 print(f"⚠️ [Whitelist] Could not look up Firebase user {uid}: {e}", flush=True)
 
         if user_email and user_email in all_whitelist:
+            _dbg.append(f"3_whitelisted=YES")
             # Determine expiry
             if user_email in timed_whitelist:
                 try:
@@ -576,6 +581,7 @@ def get_user_subscription(uid: str) -> dict:
     # ── Auto-recover user after Railway redeploy wiped SQLite DB ──────────────
     # If the user is authenticated (we have their uid) but has no local record,
     # recreate it from Firebase Auth and look up their Stripe customer by email.
+    _dbg.append(f"4_user_before_recovery={'YES' if user else 'NO'}")
     if not user and firebase_app:
         try:
             fb_user = firebase_auth.get_user(uid)
@@ -605,6 +611,7 @@ def get_user_subscription(uid: str) -> dict:
             print(f"⚠️ [Recovery] Could not look up Firebase user {uid}: {e}", flush=True)
 
     if not user:
+        _dbg.append("5_NO_USER_RETURNING_INACTIVE")
         return {
             "plan": None,
             "status": "inactive",
@@ -612,22 +619,44 @@ def get_user_subscription(uid: str) -> dict:
             "cancel_at_period_end": False,
             "has_access": False,
             "tier_limits": None,
+            "_debug": _dbg,
         }
 
     # ── Link Stripe customer if missing ───────────────────────────────────────
     # The whitelist check may have created the user record (to look up their
     # email) without linking their Stripe customer.  Ensure it's linked here.
+    _dbg.append(f"6_stripe_cid={user.get('stripe_customer_id') or 'NONE'}")
+    _dbg.append(f"6_stripe_api_key={'SET' if stripe.api_key else 'MISSING'}")
     if not user.get("stripe_customer_id") and stripe.api_key:
         user_email = user.get("email", "")
+        _dbg.append(f"7_link_search_email={user_email}")
         if user_email:
             try:
                 customers = stripe.Customer.list(email=user_email, limit=1)
+                _dbg.append(f"7_link_customers_found={len(customers.data)}")
                 if customers.data:
                     cust_id = customers.data[0].id
                     _update_user_subscription(uid, stripe_customer_id=cust_id)
                     user = _get_user(uid)
                     print(f"🔗 [Link] Linked Stripe customer {cust_id} for {user_email}", flush=True)
+                else:
+                    # Fallback: try original-case email from Firebase
+                    try:
+                        fb_user_link = firebase_auth.get_user(uid)
+                        orig_email = fb_user_link.email or ""
+                        if orig_email and orig_email != user_email:
+                            _dbg.append(f"7_link_retry_email={orig_email}")
+                            customers = stripe.Customer.list(email=orig_email, limit=1)
+                            _dbg.append(f"7_link_retry_found={len(customers.data)}")
+                            if customers.data:
+                                cust_id = customers.data[0].id
+                                _update_user_subscription(uid, stripe_customer_id=cust_id)
+                                user = _get_user(uid)
+                                print(f"🔗 [Link] Linked Stripe customer {cust_id} for {orig_email} (original case)", flush=True)
+                    except Exception:
+                        pass
             except Exception as e:
+                _dbg.append(f"7_link_error={e}")
                 print(f"⚠️ [Link] Stripe customer lookup failed for {user_email}: {e}", flush=True)
 
     plan = user.get("plan")
@@ -644,6 +673,7 @@ def get_user_subscription(uid: str) -> dict:
         status not in ("active",)  # always sync if not explicitly active
         or not plan                # plan is missing
     )
+    _dbg.append(f"8_has_stripe={has_stripe}_needs_sync={needs_stripe_sync}_status={status}_plan={plan}")
     if needs_stripe_sync:
         try:
             # First try: look for active subscriptions (includes cancel_at_period_end=true)
@@ -659,11 +689,13 @@ def get_user_subscription(uid: str) -> dict:
                     customer=user["stripe_customer_id"],
                     limit=1,
                 )
+            _dbg.append(f"9_subs_found={len(subs.data)}")
             if subs.data:
                 sub = subs.data[0]
                 stripe_status = sub.get("status", "canceled")
                 price_id = sub["items"]["data"][0]["price"]["id"]
                 synced_plan = PRICE_TO_PLAN.get(price_id)
+                _dbg.append(f"9_stripe_status={stripe_status}_price={price_id}_plan={synced_plan}")
                 cancel_at_flag = bool(sub.get("cancel_at_period_end", False))
                 period_end = datetime.fromtimestamp(
                     sub["current_period_end"], tz=timezone.utc
@@ -693,11 +725,13 @@ def get_user_subscription(uid: str) -> dict:
                 print(f"ℹ️ [Sync] User {uid}: No Stripe subscriptions found for customer "
                       f"{user['stripe_customer_id']}", flush=True)
         except Exception as e:
+            _dbg.append(f"9_sync_error={e}")
             print(f"⚠️ [Sync] Failed to check Stripe for {uid}: {e}", flush=True)
 
     # ── Compute final access decision ─────────────────────────────────────────
     has_access = _has_active_access(user) if user else False
     limits = TIER_LIMITS.get(plan) if plan and has_access else None
+    _dbg.append(f"10_final_has_access={has_access}_plan={plan}_status={status}")
 
     # Safety net: if user has access but we lost the plan (shouldn't happen after
     # sync, but guard against it), fallback to minimum tier so they aren't locked out
@@ -713,6 +747,7 @@ def get_user_subscription(uid: str) -> dict:
         "cancel_at_period_end": cancel_at,
         "has_access": has_access,
         "tier_limits": limits,
+        "_debug": _dbg,
     }
 
 
