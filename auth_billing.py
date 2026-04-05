@@ -184,6 +184,32 @@ def init_users_db():
 
 # ─── DB Helpers ───────────────────────────────────────────────────────────────
 
+def _sg(obj, key, default=None):
+    """Safely get a field from a Stripe object or dict.
+    Works with both old and new Stripe API versions."""
+    try:
+        return obj[key]
+    except (KeyError, TypeError, IndexError):
+        return default
+
+
+def _stripe_period_end(sub) -> int | None:
+    """Extract current_period_end timestamp from a Stripe subscription.
+    Newer Stripe API versions moved this field to the subscription item."""
+    # Try subscription-level first (old API)
+    val = _sg(sub, "current_period_end")
+    if val is not None:
+        return val
+    # Try item-level (new API 2025+)
+    try:
+        item = sub["items"]["data"][0]
+        return _sg(item, "current_period_end")
+    except (KeyError, TypeError, IndexError):
+        pass
+    # Try billing_cycle_anchor as last resort
+    return _sg(sub, "billing_cycle_anchor")
+
+
 def _get_user(uid: str) -> Optional[dict]:
     conn = _users_connect()
     row = conn.execute("SELECT * FROM users WHERE uid = ?", (uid,)).fetchone()
@@ -692,24 +718,29 @@ def get_user_subscription(uid: str) -> dict:
             _dbg.append(f"9_subs_found={len(subs.data)}")
             if subs.data:
                 sub = subs.data[0]
-                stripe_status = sub["status"] if "status" in sub else "canceled"
+                stripe_status = _sg(sub, "status", "canceled")
                 price_id = sub["items"]["data"][0]["price"]["id"]
                 synced_plan = PRICE_TO_PLAN.get(price_id)
                 _dbg.append(f"9_stripe_status={stripe_status}_price={price_id}_plan={synced_plan}")
-                cancel_at_flag = bool(sub["cancel_at_period_end"])
-                period_end = datetime.fromtimestamp(
-                    sub["current_period_end"], tz=timezone.utc
-                ).isoformat()
+                cancel_at_flag = bool(_sg(sub, "cancel_at_period_end", False))
+                period_end_ts = _stripe_period_end(sub)
+                _dbg.append(f"9_period_end_ts={period_end_ts}")
 
-                # Only sync if the subscription is usable (active, or canceled but period hasn't ended)
-                period_end_dt = datetime.fromtimestamp(sub["current_period_end"], tz=timezone.utc)
+                if period_end_ts:
+                    period_end = datetime.fromtimestamp(period_end_ts, tz=timezone.utc).isoformat()
+                    period_end_dt = datetime.fromtimestamp(period_end_ts, tz=timezone.utc)
+                else:
+                    # No period end found — if status is active, grant access with a synthetic far-future period
+                    period_end = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat() if stripe_status == "active" else None
+                    period_end_dt = datetime.now(timezone.utc) + timedelta(days=30) if stripe_status == "active" else datetime.min.replace(tzinfo=timezone.utc)
+
                 if stripe_status == "active" or datetime.now(timezone.utc) < period_end_dt:
                     plan = synced_plan or plan or "unknown"
                     status = stripe_status
                     cancel_at = cancel_at_flag
                     _update_user_subscription(
                         uid,
-                        stripe_subscription_id=sub["id"],
+                        stripe_subscription_id=_sg(sub, "id"),
                         plan=plan,
                         status=status,
                         current_period_end=period_end,
@@ -1053,9 +1084,8 @@ async def cancel_subscription(authorization: Optional[str] = Header(default=None
             cancel_at_period_end=True,
         )
         # Keep status as "active" — user retains access until period end
-        period_end = datetime.fromtimestamp(
-            sub["current_period_end"], tz=timezone.utc
-        ).isoformat()
+        pe_ts = _stripe_period_end(sub)
+        period_end = datetime.fromtimestamp(pe_ts, tz=timezone.utc).isoformat() if pe_ts else (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
         _update_user_subscription(
             uid,
             cancel_at_period_end=1,
@@ -1136,9 +1166,8 @@ async def upgrade_subscription(data: UpgradeRequest, authorization: Optional[str
                 stripe_sub_id = subs.data[0]["id"]
                 price_id_found = subs.data[0]["items"]["data"][0]["price"]["id"]
                 found_plan = PRICE_TO_PLAN.get(price_id_found, user.get("plan"))
-                period_end = datetime.fromtimestamp(
-                    subs.data[0]["current_period_end"], tz=timezone.utc
-                ).isoformat()
+                pe_ts = _stripe_period_end(subs.data[0])
+                period_end = datetime.fromtimestamp(pe_ts, tz=timezone.utc).isoformat() if pe_ts else (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
                 _update_user_subscription(
                     uid,
                     stripe_subscription_id=stripe_sub_id,
@@ -1235,9 +1264,9 @@ async def stripe_webhook(request: Request):
 
 def _handle_checkout_completed(session):
     """After successful checkout, activate subscription."""
-    meta = session["metadata"] if "metadata" in session else {}
-    uid = meta["firebase_uid"] if "firebase_uid" in meta else None
-    subscription_id = session["subscription"] if "subscription" in session else None
+    meta = _sg(session, "metadata") or {}
+    uid = _sg(meta, "firebase_uid")
+    subscription_id = _sg(session, "subscription")
 
     if not uid or not subscription_id:
         print(f"⚠️ [Webhook] checkout.session.completed: Missing uid or subscription_id")
@@ -1247,7 +1276,8 @@ def _handle_checkout_completed(session):
         sub = stripe.Subscription.retrieve(subscription_id)
         price_id = sub["items"]["data"][0]["price"]["id"]
         plan = PRICE_TO_PLAN.get(price_id, "unknown")
-        period_end = datetime.fromtimestamp(sub["current_period_end"], tz=timezone.utc).isoformat()
+        pe_ts = _stripe_period_end(sub)
+        period_end = datetime.fromtimestamp(pe_ts, tz=timezone.utc).isoformat() if pe_ts else (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
 
         _update_user_subscription(
             uid,
@@ -1264,22 +1294,21 @@ def _handle_checkout_completed(session):
 
 def _handle_subscription_updated(subscription):
     """Subscription renewed, plan changed, or status changed."""
-    customer_id = subscription["customer"]
-    subscription_id = subscription["id"]
-    status = subscription["status"]
+    customer_id = _sg(subscription, "customer")
+    subscription_id = _sg(subscription, "id")
+    status = _sg(subscription, "status")
     price_id = subscription["items"]["data"][0]["price"]["id"]
     plan = PRICE_TO_PLAN.get(price_id, "unknown")
-    period_end = datetime.fromtimestamp(
-        subscription["current_period_end"], tz=timezone.utc
-    ).isoformat()
-    cancel_at = 1 if subscription["cancel_at_period_end"] else 0
+    pe_ts = _stripe_period_end(subscription)
+    period_end = datetime.fromtimestamp(pe_ts, tz=timezone.utc).isoformat() if pe_ts else (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    cancel_at = 1 if _sg(subscription, "cancel_at_period_end", False) else 0
 
     user = _get_user_by_stripe_customer(customer_id)
 
     # If user not found (DB was wiped), try to recover via subscription metadata
     if not user:
-        meta = subscription["metadata"] if "metadata" in subscription else {}
-        uid = meta["firebase_uid"] if "firebase_uid" in meta else None
+        meta = _sg(subscription, "metadata") or {}
+        uid = _sg(meta, "firebase_uid")
         if uid and firebase_app:
             try:
                 fb_user = firebase_auth.get_user(uid)
@@ -1308,8 +1337,8 @@ def _handle_subscription_updated(subscription):
 
 def _handle_subscription_deleted(subscription):
     """Subscription was fully canceled/expired — period has ended, revoke access now."""
-    customer_id = subscription["customer"]
-    subscription_id = subscription["id"]
+    customer_id = _sg(subscription, "customer")
+    subscription_id = _sg(subscription, "id")
 
     user = _get_user_by_stripe_customer(customer_id)
     if not user:
@@ -1328,8 +1357,8 @@ def _handle_subscription_deleted(subscription):
 
 def _handle_payment_failed(invoice):
     """Payment failed on renewal — mark as past_due."""
-    customer_id = invoice["customer"]
-    subscription_id = invoice["subscription"]
+    customer_id = _sg(invoice, "customer")
+    subscription_id = _sg(invoice, "subscription")
 
     user = _get_user_by_stripe_customer(customer_id)
     if not user:
