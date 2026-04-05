@@ -692,11 +692,11 @@ def get_user_subscription(uid: str) -> dict:
             _dbg.append(f"9_subs_found={len(subs.data)}")
             if subs.data:
                 sub = subs.data[0]
-                stripe_status = sub.get("status", "canceled")
+                stripe_status = sub["status"] if "status" in sub else "canceled"
                 price_id = sub["items"]["data"][0]["price"]["id"]
                 synced_plan = PRICE_TO_PLAN.get(price_id)
                 _dbg.append(f"9_stripe_status={stripe_status}_price={price_id}_plan={synced_plan}")
-                cancel_at_flag = bool(sub.get("cancel_at_period_end", False))
+                cancel_at_flag = bool(sub["cancel_at_period_end"])
                 period_end = datetime.fromtimestamp(
                     sub["current_period_end"], tz=timezone.utc
                 ).isoformat()
@@ -1233,10 +1233,11 @@ async def stripe_webhook(request: Request):
     return {"status": "ok"}
 
 
-def _handle_checkout_completed(session: dict):
+def _handle_checkout_completed(session):
     """After successful checkout, activate subscription."""
-    uid = session.get("metadata", {}).get("firebase_uid")
-    subscription_id = session.get("subscription")
+    meta = session["metadata"] if "metadata" in session else {}
+    uid = meta["firebase_uid"] if "firebase_uid" in meta else None
+    subscription_id = session["subscription"] if "subscription" in session else None
 
     if not uid or not subscription_id:
         print(f"⚠️ [Webhook] checkout.session.completed: Missing uid or subscription_id")
@@ -1261,23 +1262,24 @@ def _handle_checkout_completed(session: dict):
         print(f"❌ [Webhook] Error processing checkout: {e}")
 
 
-def _handle_subscription_updated(subscription: dict):
+def _handle_subscription_updated(subscription):
     """Subscription renewed, plan changed, or status changed."""
-    customer_id = subscription.get("customer")
-    subscription_id = subscription.get("id")
-    status = subscription.get("status")
+    customer_id = subscription["customer"]
+    subscription_id = subscription["id"]
+    status = subscription["status"]
     price_id = subscription["items"]["data"][0]["price"]["id"]
     plan = PRICE_TO_PLAN.get(price_id, "unknown")
     period_end = datetime.fromtimestamp(
         subscription["current_period_end"], tz=timezone.utc
     ).isoformat()
-    cancel_at = 1 if subscription.get("cancel_at_period_end", False) else 0
+    cancel_at = 1 if subscription["cancel_at_period_end"] else 0
 
     user = _get_user_by_stripe_customer(customer_id)
 
     # If user not found (DB was wiped), try to recover via subscription metadata
     if not user:
-        uid = subscription.get("metadata", {}).get("firebase_uid")
+        meta = subscription["metadata"] if "metadata" in subscription else {}
+        uid = meta["firebase_uid"] if "firebase_uid" in meta else None
         if uid and firebase_app:
             try:
                 fb_user = firebase_auth.get_user(uid)
@@ -1304,10 +1306,10 @@ def _handle_subscription_updated(subscription: dict):
     print(f"📝 [Webhook] Subscription updated: {user['uid']} → {plan}/{status} (cancel_at_period_end={bool(cancel_at)})")
 
 
-def _handle_subscription_deleted(subscription: dict):
+def _handle_subscription_deleted(subscription):
     """Subscription was fully canceled/expired — period has ended, revoke access now."""
-    customer_id = subscription.get("customer")
-    subscription_id = subscription.get("id")
+    customer_id = subscription["customer"]
+    subscription_id = subscription["id"]
 
     user = _get_user_by_stripe_customer(customer_id)
     if not user:
@@ -1324,10 +1326,10 @@ def _handle_subscription_deleted(subscription: dict):
     print(f"🚫 [Webhook] Subscription fully ended: {user['uid']}")
 
 
-def _handle_payment_failed(invoice: dict):
+def _handle_payment_failed(invoice):
     """Payment failed on renewal — mark as past_due."""
-    customer_id = invoice.get("customer")
-    subscription_id = invoice.get("subscription")
+    customer_id = invoice["customer"]
+    subscription_id = invoice["subscription"]
 
     user = _get_user_by_stripe_customer(customer_id)
     if not user:
