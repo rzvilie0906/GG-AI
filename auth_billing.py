@@ -541,6 +541,32 @@ def get_user_subscription(uid: str) -> dict:
             }
     # ───────────────────────────────────────────────────────────────────────────
 
+    # ── Auto-recover user after Railway redeploy wiped SQLite DB ──────────────
+    # If the user is authenticated (we have their uid) but has no local record,
+    # recreate it from Firebase Auth and look up their Stripe customer by email.
+    if not user and firebase_app:
+        try:
+            fb_user = firebase_auth.get_user(uid)
+            if fb_user.email:
+                fb_profile = _get_profile_from_firebase(uid)
+                _upsert_user(
+                    uid, fb_user.email, "firebase",
+                    full_name=fb_profile.get("full_name"),
+                    date_of_birth=fb_profile.get("date_of_birth"),
+                )
+                # Try to find their Stripe customer by email
+                if stripe.api_key:
+                    try:
+                        customers = stripe.Customer.list(email=fb_user.email, limit=1)
+                        if customers.data:
+                            _update_user_subscription(uid, stripe_customer_id=customers.data[0].id)
+                    except Exception as e:
+                        print(f"⚠️ [Recovery] Stripe customer lookup failed for {fb_user.email}: {e}", flush=True)
+                user = _get_user(uid)
+                print(f"🔄 [Recovery] Recreated user {uid} ({fb_user.email}) from Firebase after DB reset", flush=True)
+        except Exception as e:
+            print(f"⚠️ [Recovery] Could not look up Firebase user {uid}: {e}", flush=True)
+
     if not user:
         return {
             "plan": None,
