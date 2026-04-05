@@ -555,8 +555,16 @@ def get_user_subscription(uid: str) -> dict:
     status = user.get("status", "inactive")
     cancel_at = bool(user.get("cancel_at_period_end", 0))
 
-    # ── Fallback: if user paid but webhook hasn't updated DB yet, check Stripe ─
-    if status not in ("active",) and not _has_active_access(user) and user.get("stripe_customer_id") and stripe.api_key:
+    # ── Fallback: sync from Stripe if local state looks wrong ─────────────────
+    # Triggers when:
+    #   1. User has no active access at all (status not active, period ended), OR
+    #   2. User has access but DB is missing plan data (caused by the old cancel
+    #      bug that set plan=None + status=canceled immediately)
+    needs_stripe_sync = (
+        (status != "active" and not _has_active_access(user))
+        or (not plan and user.get("stripe_customer_id"))
+    )
+    if needs_stripe_sync and user.get("stripe_customer_id") and stripe.api_key:
         try:
             subs = stripe.Subscription.list(
                 customer=user["stripe_customer_id"],
