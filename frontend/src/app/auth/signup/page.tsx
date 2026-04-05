@@ -163,14 +163,7 @@ function SignUpForm() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-violet flex items-center justify-center">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-            </div>
-            <span className="text-2xl font-bold text-white">
-              GG-<span className="text-primary">AI</span>
-            </span>
+            <img src="/logo.png" alt="GG-AI" className="h-11 w-auto object-contain rounded-xl" />
           </Link>
         </div>
 

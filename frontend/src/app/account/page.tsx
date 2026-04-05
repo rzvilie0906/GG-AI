@@ -229,12 +229,7 @@ export default function AccountPage() {
       <div className="border-b border-white/[0.06] bg-[#0d1117]/80 backdrop-blur-xl">
         <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-2 text-white no-underline hover:opacity-80 transition">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-violet flex items-center justify-center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-            </div>
-            <span className="text-lg font-extrabold">GG-<span className="text-primary">AI</span></span>
+            <img src="/logo.png" alt="GG-AI" className="h-9 w-auto object-contain rounded-lg" />
           </Link>
           <div className="flex items-center gap-3">
             <Link href="/dashboard" className="text-sm text-text-secondary hover:text-white transition no-underline">
