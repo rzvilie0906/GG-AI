@@ -17,11 +17,11 @@ const faqItems = [
   },
   {
     q: "Ce este Analizorul de Risc al Biletului?",
-    a: "E ca și cum ai avea un consultant alături. Adaugi meciurile tale pe bilet în dashboard, iar AI-ul evaluează biletul în ansamblu — nu doar fiecare meci separat. Primești un scor de risc total, un verdict clar și sfaturi concrete: „cota pe meciul X e prea mare, încearcă alternativa Y". Disponibil în planurile Pro (max 7 verificări/zi) și Elite (nelimitat)."
+    a: "E ca și cum ai avea un consultant alături. Adaugi meciurile tale pe bilet în dashboard, iar AI-ul evaluează biletul în ansamblu — nu doar fiecare meci separat. Primești un scor de risc total, un verdict clar și sfaturi concrete: \u201Ecota pe meciul X e prea mare, încearcă alternativa Y\u201D. Disponibil în planurile Pro (max 7 verificări/zi) și Elite (nelimitat)."
   },
   {
     q: "Pot anula abonamentul oricând?",
-    a: "Da, fără nicio problemă. Intri în secțiunea „Contul meu" din dashboard, apeși anulare și gata. Fără contracte, fără penalități, fără întrebări. După anulare, păstrezi accesul la tot până la sfârșitul perioadei plătite."
+    a: "Da, fără nicio problemă. Intri în secțiunea \u201EContul meu\u201D din dashboard, apeși anulare și gata. Fără contracte, fără penalități, fără întrebări. După anulare, păstrezi accesul la tot până la sfârșitul perioadei plătite."
   },
   {
     q: "Care este diferența dintre planuri?",

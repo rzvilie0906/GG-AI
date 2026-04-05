@@ -172,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 uid: result.user.uid,
                 email: result.user.email,
                 provider: "google",
+                full_name: result.user.displayName || null,
               }),
             });
             // Set session cookie so middleware allows navigation
@@ -261,6 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           uid: cred.user.uid,
           email: cred.user.email,
           provider: "email",
+          full_name: cred.user.displayName || null,
         }),
       });
     } catch (e) {
@@ -272,6 +274,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { auth } = await getFirebaseAuth();
     const { createUserWithEmailAndPassword, sendEmailVerification, signOut: firebaseSignOut } = await import("firebase/auth");
     const cred = await createUserWithEmailAndPassword(auth, email, password);
+    // Persist full name in Firebase Auth so it survives DB resets
+    if (fullName) {
+      const { updateProfile } = await import("firebase/auth");
+      await updateProfile(cred.user, { displayName: fullName.trim() });
+    }
     await sendEmailVerification(cred.user);
     // Register user in backend
     try {
@@ -348,6 +355,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           uid: cred.user.uid,
           email: cred.user.email,
           provider: "google",
+          full_name: cred.user.displayName || null,
         }),
       });
       // Check if profile is complete (has full_name and date_of_birth)

@@ -187,6 +187,37 @@ def _get_user(uid: str) -> Optional[dict]:
         return dict(row)
     return None
 
+def _save_profile_to_firebase(uid: str, full_name: str = None, date_of_birth: str = None):
+    """Persist profile fields in Firebase Auth so they survive SQLite DB resets."""
+    if not firebase_app:
+        return
+    try:
+        update_kwargs = {}
+        if full_name:
+            update_kwargs["display_name"] = full_name
+        if update_kwargs:
+            firebase_auth.update_user(uid, **update_kwargs)
+        # Store date_of_birth in custom claims (survives redeploys)
+        if date_of_birth:
+            existing = firebase_auth.get_user(uid).custom_claims or {}
+            firebase_auth.set_custom_user_claims(uid, {**existing, "date_of_birth": date_of_birth})
+    except Exception as e:
+        logging.warning(f"Could not persist profile to Firebase: {e}")
+
+def _get_profile_from_firebase(uid: str) -> dict:
+    """Read profile fields from Firebase Auth (displayName + custom claims)."""
+    if not firebase_app:
+        return {}
+    try:
+        fb_user = firebase_auth.get_user(uid)
+        claims = fb_user.custom_claims or {}
+        return {
+            "full_name": fb_user.display_name or claims.get("full_name"),
+            "date_of_birth": claims.get("date_of_birth"),
+        }
+    except Exception:
+        return {}
+
 def _upsert_user(uid: str, email: str, provider: str = "email", full_name: str = None, date_of_birth: str = None):
     conn = _users_connect()
     now = datetime.now(timezone.utc).isoformat()
@@ -605,10 +636,21 @@ async def register_user(data: RegisterRequest, authorization: Optional[str] = He
     if decoded["uid"] != data.uid:
         raise HTTPException(status_code=403, detail="UID-ul nu corespunde cu tokenul.")
 
+    full_name = data.full_name
+    date_of_birth = data.date_of_birth
+
+    # If profile fields are missing, recover from Firebase Auth (survives DB resets)
+    if not full_name or not date_of_birth:
+        fb_profile = _get_profile_from_firebase(data.uid)
+        if not full_name:
+            full_name = fb_profile.get("full_name")
+        if not date_of_birth:
+            date_of_birth = fb_profile.get("date_of_birth")
+
     # Validate age (must be 18+)
-    if data.date_of_birth:
+    if date_of_birth:
         try:
-            dob = datetime.fromisoformat(data.date_of_birth)
+            dob = datetime.fromisoformat(date_of_birth)
             today = datetime.now(timezone.utc)
             age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
             if age < 18:
@@ -616,7 +658,11 @@ async def register_user(data: RegisterRequest, authorization: Optional[str] = He
         except ValueError:
             raise HTTPException(status_code=400, detail="Data nașterii nu este validă.")
 
-    _upsert_user(data.uid, data.email, data.provider, data.full_name, data.date_of_birth)
+    _upsert_user(data.uid, data.email, data.provider, full_name, date_of_birth)
+
+    # Persist profile to Firebase so it survives Railway redeploys / DB resets
+    if data.full_name or data.date_of_birth:
+        _save_profile_to_firebase(data.uid, data.full_name, data.date_of_birth)
 
     return {"status": "ok", "message": "Utilizator înregistrat cu succes."}
 
@@ -627,14 +673,29 @@ async def get_profile(authorization: Optional[str] = Header(default=None)):
     decoded = await verify_firebase_token(authorization)
     uid = decoded["uid"]
     user = _get_user(uid)
-    if not user:
-        return {"uid": uid, "email": decoded.get("email", ""), "full_name": None, "date_of_birth": None}
+
+    full_name = user.get("full_name") if user else None
+    date_of_birth = user.get("date_of_birth") if user else None
+    email = user.get("email", decoded.get("email", "")) if user else decoded.get("email", "")
+    provider = user.get("provider") if user else None
+
+    # If profile data is missing from SQLite, recover from Firebase
+    if not full_name or not date_of_birth:
+        fb_profile = _get_profile_from_firebase(uid)
+        if not full_name:
+            full_name = fb_profile.get("full_name")
+        if not date_of_birth:
+            date_of_birth = fb_profile.get("date_of_birth")
+        # Backfill SQLite so future reads are fast
+        if (full_name or date_of_birth) and user:
+            _upsert_user(uid, email, provider or "email", full_name, date_of_birth)
+
     return {
-        "uid": user["uid"],
-        "email": user["email"],
-        "full_name": user.get("full_name"),
-        "date_of_birth": user.get("date_of_birth"),
-        "provider": user.get("provider"),
+        "uid": uid,
+        "email": email,
+        "full_name": full_name,
+        "date_of_birth": date_of_birth,
+        "provider": provider,
     }
 
 
@@ -679,6 +740,8 @@ async def update_profile(data: UpdateProfileRequest, authorization: Optional[str
         conn.execute(f"UPDATE users SET {', '.join(sets)} WHERE uid = ?", vals)
         conn.commit()
         conn.close()
+        # Persist to Firebase so updates survive DB resets
+        _save_profile_to_firebase(uid, updates.get("full_name"), updates.get("date_of_birth"))
 
     return {"status": "ok", "message": "Profilul a fost actualizat cu succes."}
 
