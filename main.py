@@ -71,6 +71,19 @@ app = FastAPI(title="GG-AI Sports API", version="2.0.0")
 
 ticket_lock = asyncio.Lock()
 
+# ── SEIF (Safe): Per-match locks to prevent duplicate AI generations ──
+# When multiple users request the same uncached match simultaneously,
+# only the first triggers AI; others wait for the result.
+_seif_locks: Dict[str, asyncio.Lock] = {}
+_seif_locks_guard = asyncio.Lock()
+
+async def _get_seif_lock(seif_key: str) -> asyncio.Lock:
+    """Get or create an asyncio.Lock for a specific match key."""
+    async with _seif_locks_guard:
+        if seif_key not in _seif_locks:
+            _seif_locks[seif_key] = asyncio.Lock()
+        return _seif_locks[seif_key]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -528,6 +541,73 @@ def _refresh_from_firestore():
         print(f"⚠️ [REFRESH] Firestore download failed: {e}")
 
 
+def _save_analysis_to_firestore(seif_key: str, analysis_json: str):
+    """Persist a cached analysis to Firestore so it survives Railway restarts."""
+    try:
+        db_fs = _get_firestore_client()
+        if db_fs is None:
+            return
+        db_fs.collection("saved_analyses").document(seif_key).set({
+            "match_key": seif_key,
+            "analysis_json": analysis_json,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        })
+        print(f"☁️ [SEIF→FIRESTORE] Salvat: {seif_key}")
+    except Exception as e:
+        print(f"⚠️ [SEIF→FIRESTORE] Eroare la salvare {seif_key}: {e}")
+
+
+def _restore_analyses_from_firestore():
+    """Load all cached analyses from Firestore into local SQLite on boot."""
+    try:
+        db_fs = _get_firestore_client()
+        if db_fs is None:
+            return
+        conn = _db_connect()
+        count = 0
+        for doc in db_fs.collection("saved_analyses").stream():
+            data = doc.to_dict()
+            match_key = data.get("match_key", doc.id)
+            analysis_json = data.get("analysis_json", "")
+            if match_key and analysis_json:
+                conn.execute(
+                    "INSERT OR IGNORE INTO saved_analyses (match_key, analysis_json) VALUES (?, ?)",
+                    (match_key, analysis_json),
+                )
+                count += 1
+        conn.commit()
+        conn.close()
+        print(f"☁️ [FIRESTORE→SEIF] Restaurat {count} analize din Firestore.")
+    except Exception as e:
+        print(f"⚠️ [FIRESTORE→SEIF] Eroare la restaurare: {e}")
+
+
+def _purge_old_analyses_from_firestore():
+    """Remove analyses older than 2 days from Firestore to keep storage clean."""
+    try:
+        db_fs = _get_firestore_client()
+        if db_fs is None:
+            return
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        batch = db_fs.batch()
+        count = 0
+        for doc in db_fs.collection("saved_analyses").stream():
+            data = doc.to_dict()
+            saved_at = data.get("saved_at", "")
+            if saved_at and saved_at < cutoff:
+                batch.delete(doc.reference)
+                count += 1
+                if count % 400 == 0:
+                    batch.commit()
+                    batch = db_fs.batch()
+        if count % 400 != 0:
+            batch.commit()
+        if count > 0:
+            print(f"🗑️ [SEIF] Purged {count} old analyses from Firestore.")
+    except Exception as e:
+        print(f"⚠️ [SEIF] Purge error: {e}")
+
+
 async def auto_sync_worker():
     """Refresh from Firestore every hour to pick up data from the daily 09:00 sync."""
     while True:
@@ -538,6 +618,12 @@ async def auto_sync_worker():
         except Exception as e:
             print(f"⚠️ [AUTOPILOT] Firestore refresh failed: {e}")
 
+        # Purge old analyses from Firestore (older than 2 days)
+        try:
+            _purge_old_analyses_from_firestore()
+        except Exception as e:
+            print(f"⚠️ [AUTOPILOT] Analysis purge failed: {e}")
+
         # All syncing (ESPN + Odds API) happens ONCE daily at 09:00 Romanian time
         # via auto_sync_master.py on the local machine. The server only reads from Firestore.
 
@@ -547,6 +633,7 @@ async def auto_sync_worker():
 def _startup():
     _init_db()
     _bootstrap_from_firestore()
+    _restore_analyses_from_firestore()   # Restore cached analyses from Firestore
     init_users_db()
     asyncio.create_task(auto_sync_worker())
 
@@ -1465,14 +1552,14 @@ async def analyze(
     if not already_seen and firebase_uid and user_plan:
         check_analysis_quota(firebase_uid, user_plan)
 
-    # ── Check cache ──
+    # ── Check cache (fast path, no lock needed) ──
     conn = _db_connect()
     cur = conn.cursor()
     cur.execute("SELECT analysis_json FROM saved_analyses WHERE match_key=?", (seif_key,))
     row = cur.fetchone()
+    conn.close()
     
     if row:
-        conn.close()
         if firebase_uid:
             _increment_unique_analysis(firebase_uid, seif_key)
         analysis = json.loads(row["analysis_json"])
@@ -1482,39 +1569,59 @@ async def analyze(
         print(f"💎 [SEIF] Analiză livrată din memorie pentru: {data.home_team}")
         return {"analysis": analysis}
 
-    # ── No cache — fetch premium data ──
-    premium_raw = get_api_sports_data(data.sport, data.home_team, data.match_date)
-    
-    home_id = premium_raw.get("basic_info", {}).get("teams", {}).get("home", {}).get("id")
-    away_id = premium_raw.get("basic_info", {}).get("teams", {}).get("away", {}).get("id")
-    history = premium_raw.get("h2h_history", []) or []
+    # ── Cache miss — acquire per-match lock to prevent duplicate AI generations ──
+    # If 100 users request the same match, only the first generates via AI.
+    # The rest wait for the lock and then read from cache.
+    match_lock = await _get_seif_lock(seif_key)
+    async with match_lock:
+        # Re-check cache inside lock (another request may have filled it while we waited)
+        conn = _db_connect()
+        cur = conn.cursor()
+        cur.execute("SELECT analysis_json FROM saved_analyses WHERE match_key=?", (seif_key,))
+        row = cur.fetchone()
+        if row:
+            conn.close()
+            if firebase_uid:
+                _increment_unique_analysis(firebase_uid, seif_key)
+            analysis = json.loads(row["analysis_json"])
+            odds_str = _lookup_odds_from_db(data.sport, data.home_team, data.away_team)
+            analysis = _inject_real_odds(analysis, odds_str)
+            print(f"💎 [SEIF] Analiză livrată din memorie (post-lock) pentru: {data.home_team}")
+            return {"analysis": analysis}
 
-    forma_home = get_exact_stats(history, home_id, data.sport)
-    forma_away = get_exact_stats(history, away_id, data.sport)
+        # ── No cache — fetch premium data ──
+        premium_raw = get_api_sports_data(data.sport, data.home_team, data.match_date)
+        
+        home_id = premium_raw.get("basic_info", {}).get("teams", {}).get("home", {}).get("id")
+        away_id = premium_raw.get("basic_info", {}).get("teams", {}).get("away", {}).get("id")
+        history = premium_raw.get("h2h_history", []) or []
 
-    intel_pool = {
-        "forma_exacta_gazde": forma_home["string"],
-        "forma_exacta_oaspeti": forma_away["string"],
-        "detalii_premium": premium_raw
-    }
+        forma_home = get_exact_stats(history, home_id, data.sport)
+        forma_away = get_exact_stats(history, away_id, data.sport)
 
-    odds_str = _lookup_odds_from_db(data.sport, data.home_team, data.away_team)
+        intel_pool = {
+            "forma_exacta_gazde": forma_home["string"],
+            "forma_exacta_oaspeti": forma_away["string"],
+            "detalii_premium": premium_raw
+        }
 
-    if data.sport == "football":
-        live_intel = get_premium_football_data(data.home_team, data.away_team, data.match_date)
-    else:
-        cur.execute("SELECT provider_event_id, league_key FROM events WHERE home_team=? AND away_team=? COLLATE NOCASE LIMIT 1", (data.home_team, data.away_team))
-        ev_row = cur.fetchone()
-        event_id = ev_row["provider_event_id"] if ev_row else ""
-        league_key = ev_row["league_key"] if ev_row else ""
-        live_intel = get_real_live_data(data.sport, event_id, league_key, data.home_team, data.away_team)
+        odds_str = _lookup_odds_from_db(data.sport, data.home_team, data.away_team)
 
-    system_prompt = generate_system_prompt()
-    
-    # Trim odds to reduce token cost (keep top 3 bookmakers, remove bloat)
-    odds_trimmed = _trim_odds_json(odds_str)
-    
-    user_input = f"""MECI: {data.home_team} vs {data.away_team}
+        if data.sport == "football":
+            live_intel = get_premium_football_data(data.home_team, data.away_team, data.match_date)
+        else:
+            cur.execute("SELECT provider_event_id, league_key FROM events WHERE home_team=? AND away_team=? COLLATE NOCASE LIMIT 1", (data.home_team, data.away_team))
+            ev_row = cur.fetchone()
+            event_id = ev_row["provider_event_id"] if ev_row else ""
+            league_key = ev_row["league_key"] if ev_row else ""
+            live_intel = get_real_live_data(data.sport, event_id, league_key, data.home_team, data.away_team)
+
+        system_prompt = generate_system_prompt()
+        
+        # Trim odds to reduce token cost (keep top 3 bookmakers, remove bloat)
+        odds_trimmed = _trim_odds_json(odds_str)
+        
+        user_input = f"""MECI: {data.home_team} vs {data.away_team}
 LIGA: {data.league}
 DATA: {data.match_date}
 SPORT: {data.sport}
@@ -1530,44 +1637,48 @@ DATE STATISTICE (din API extern — folosește mediile de goluri ca referință 
 {live_intel}
 {f"Note utilizator: {data.extra_context}" if data.extra_context else ""}
 Returnează DOAR JSON valid conform schemei din system prompt."""
-    try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            temperature=0,
-            max_tokens=1200,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_input}],
-        )
-        content = response.choices[0].message.content
-        if content.startswith("```json"):
-            content = content.replace("```json", "", 1)
-        if content.endswith("```"):
-            content = content[::-1].replace("```"[::-1], "", 1)[::-1]
-        
-        parsed_json = json.loads(content.strip())
-        
-        # Post-procesare: validează și corectează model_probability / fair_odds
-        parsed_json = _fix_probabilities(parsed_json)
-        
-        # Override section3_odds with real bookmaker data (never trust AI-generated odds)
-        parsed_json = _inject_real_odds(parsed_json, odds_str)
-        
-        cur.execute("INSERT OR REPLACE INTO saved_analyses (match_key, analysis_json) VALUES (?, ?)", 
-                    (seif_key, json.dumps(parsed_json, ensure_ascii=False)))
-        conn.commit()
-        conn.close()
-        
-        print(f"✅ [SUCCES] Analiză generată și salvată pentru {data.home_team}")
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                temperature=0,
+                max_tokens=1200,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_input}],
+            )
+            content = response.choices[0].message.content
+            if content.startswith("```json"):
+                content = content.replace("```json", "", 1)
+            if content.endswith("```"):
+                content = content[::-1].replace("```"[::-1], "", 1)[::-1]
+            
+            parsed_json = json.loads(content.strip())
+            
+            # Post-procesare: validează și corectează model_probability / fair_odds
+            parsed_json = _fix_probabilities(parsed_json)
+            
+            # Override section3_odds with real bookmaker data (never trust AI-generated odds)
+            parsed_json = _inject_real_odds(parsed_json, odds_str)
+            
+            analysis_str = json.dumps(parsed_json, ensure_ascii=False)
+            cur.execute("INSERT OR REPLACE INTO saved_analyses (match_key, analysis_json) VALUES (?, ?)", 
+                        (seif_key, analysis_str))
+            conn.commit()
+            conn.close()
+            
+            # Persist to Firestore so cache survives server restarts
+            _save_analysis_to_firestore(seif_key, analysis_str)
+            
+            print(f"✅ [SUCCES] Analiză generată și salvată pentru {data.home_team}")
 
-        # Track usage for Firebase-authenticated users
-        if firebase_uid:
-            _increment_unique_analysis(firebase_uid, seif_key)
+            # Track usage for Firebase-authenticated users
+            if firebase_uid:
+                _increment_unique_analysis(firebase_uid, seif_key)
 
-        return {"analysis": parsed_json}
-        
-    except Exception as e:
-        if 'conn' in locals(): conn.close()
-        print(f"❌ [EROARE AI] {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            return {"analysis": parsed_json}
+            
+        except Exception as e:
+            if 'conn' in locals(): conn.close()
+            print(f"❌ [EROARE AI] {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 # ── Admin: Purge cached analysis ─────────────────────────────
 @app.delete("/admin/analysis/{match_key:path}")
@@ -1583,6 +1694,13 @@ def admin_delete_analysis(
     deleted = cur.rowcount
     conn.commit()
     conn.close()
+    # Also delete from Firestore
+    try:
+        db_fs = _get_firestore_client()
+        if db_fs:
+            db_fs.collection("saved_analyses").document(match_key).delete()
+    except Exception:
+        pass
     return {"deleted": deleted, "match_key": match_key}
 
 @app.delete("/admin/analysis-search")
@@ -1601,6 +1719,14 @@ def admin_delete_analysis_search(
     deleted = cur.rowcount
     conn.commit()
     conn.close()
+    # Also delete from Firestore
+    try:
+        db_fs = _get_firestore_client()
+        if db_fs:
+            for k in keys:
+                db_fs.collection("saved_analyses").document(k).delete()
+    except Exception:
+        pass
     return {"deleted": deleted, "query": q, "keys_removed": keys}
 
 @app.get("/admin/analyses")

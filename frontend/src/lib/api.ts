@@ -136,8 +136,22 @@ export async function analyzeMatch(
   startTimeUtc?: string
 ): Promise<AnalysisResult> {
   // Check frontend in-memory cache first (instant, no network)
-  // Cache is used only to avoid flickering on re-renders — backend handles quota dedup
   const cacheKey = `${sport}_${homeTeam}_${awayTeam}_${matchDate}`.replace(/ /g, "_").toLowerCase();
+  const cached = _analysisCache.get(cacheKey);
+  if (cached) return cached;
+
+  // Try lightweight cache-only endpoint first (no auth, no AI, no quota)
+  try {
+    const cacheUrl = `${API_BASE}/analyze-cached?sport=${encodeURIComponent(sport)}&home_team=${encodeURIComponent(homeTeam)}&away_team=${encodeURIComponent(awayTeam)}&match_date=${encodeURIComponent(matchDate)}`;
+    const cr = await fetch(cacheUrl, { cache: "no-store" });
+    if (cr.ok) {
+      const cData = await cr.json();
+      if (cData.cached && cData.analysis) {
+        _analysisCache.set(cacheKey, cData.analysis);
+        return cData.analysis;
+      }
+    }
+  } catch { /* fall through to full analyze */ }
 
   // Full analyze with auth + quota tracking (cached or AI-generated)
   const payload = {
