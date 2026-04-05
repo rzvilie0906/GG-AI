@@ -398,7 +398,7 @@ export default function Dashboard() {
   }
 
   // ── Don't render if not authorized (redirect will happen via useEffect) ──
-  if (!user || !subscription || subscription.status !== "active") {
+  if (!user || !subscription || !subscription.has_access) {
     return null;
   }
 
