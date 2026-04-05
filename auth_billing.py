@@ -128,6 +128,7 @@ def init_users_db():
             plan TEXT,
             status TEXT DEFAULT 'inactive',
             current_period_end TEXT,
+            cancel_at_period_end INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -139,6 +140,10 @@ def init_users_db():
         pass
     try:
         cur.execute("ALTER TABLE users ADD COLUMN date_of_birth TEXT")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN cancel_at_period_end INTEGER DEFAULT 0")
     except Exception:
         pass
     cur.execute("""
@@ -473,6 +478,32 @@ async def verify_firebase_token(authorization: Optional[str] = Header(default=No
         raise HTTPException(status_code=401, detail=f"Eroare verificare token: {str(e)}")
 
 
+def _has_active_access(user: dict) -> bool:
+    """
+    Determine if a user currently has access to paid features.
+    Access is granted when:
+      - status is 'active' (normal or cancel_at_period_end=true, still within period)
+      - OR status is 'canceled'/'past_due' BUT current_period_end is still in the future
+    This ensures users who cancel keep access until their billing period ends.
+    """
+    status = user.get("status", "inactive")
+    if status == "active":
+        return True
+    # For canceled/past_due, check if the paid period hasn't ended yet
+    if status in ("canceled", "past_due"):
+        period_end_str = user.get("current_period_end")
+        if period_end_str:
+            try:
+                period_end = datetime.fromisoformat(period_end_str)
+                if period_end.tzinfo is None:
+                    period_end = period_end.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) < period_end:
+                    return True
+            except (ValueError, TypeError):
+                pass
+    return False
+
+
 def get_user_subscription(uid: str) -> dict:
     """Get subscription info with tier limits for a user."""
     user = _get_user(uid)
@@ -513,14 +544,17 @@ def get_user_subscription(uid: str) -> dict:
             "plan": None,
             "status": "inactive",
             "current_period_end": None,
+            "cancel_at_period_end": False,
+            "has_access": False,
             "tier_limits": None,
         }
 
     plan = user.get("plan")
     status = user.get("status", "inactive")
+    cancel_at = bool(user.get("cancel_at_period_end", 0))
 
     # ── Fallback: if user paid but webhook hasn't updated DB yet, check Stripe ─
-    if status != "active" and user.get("stripe_customer_id") and stripe.api_key:
+    if status not in ("active",) and not _has_active_access(user) and user.get("stripe_customer_id") and stripe.api_key:
         try:
             subs = stripe.Subscription.list(
                 customer=user["stripe_customer_id"],
@@ -532,6 +566,7 @@ def get_user_subscription(uid: str) -> dict:
                 price_id = sub["items"]["data"][0]["price"]["id"]
                 plan = PRICE_TO_PLAN.get(price_id, "unknown")
                 status = "active"
+                cancel_at = bool(sub.get("cancel_at_period_end", False))
                 period_end = datetime.fromtimestamp(
                     sub["current_period_end"], tz=timezone.utc
                 ).isoformat()
@@ -542,17 +577,22 @@ def get_user_subscription(uid: str) -> dict:
                     plan=plan,
                     status="active",
                     current_period_end=period_end,
+                    cancel_at_period_end=1 if cancel_at else 0,
                 )
+                user = _get_user(uid)  # refresh
                 print(f"🔄 [Sync] User {uid} synced from Stripe: {plan}/active", flush=True)
         except Exception as e:
             print(f"⚠️ [Sync] Failed to check Stripe for {uid}: {e}", flush=True)
 
-    limits = TIER_LIMITS.get(plan) if plan else None
+    has_access = _has_active_access(user) if user else False
+    limits = TIER_LIMITS.get(plan) if plan and has_access else None
 
     return {
-        "plan": plan,
+        "plan": plan if has_access else None,
         "status": status,
         "current_period_end": user.get("current_period_end"),
+        "cancel_at_period_end": cancel_at,
+        "has_access": has_access,
         "tier_limits": limits,
     }
 
@@ -854,12 +894,24 @@ async def cancel_subscription(authorization: Optional[str] = Header(default=None
         raise HTTPException(status_code=503, detail="Stripe nu este configurat.")
 
     try:
-        stripe.Subscription.modify(
+        sub = stripe.Subscription.modify(
             user["stripe_subscription_id"],
             cancel_at_period_end=True,
         )
-        _update_user_subscription(uid, status="canceled")
-        return {"status": "ok", "message": "Abonamentul va fi anulat la sfârșitul perioadei curente."}
+        # Keep status as "active" — user retains access until period end
+        period_end = datetime.fromtimestamp(
+            sub["current_period_end"], tz=timezone.utc
+        ).isoformat()
+        _update_user_subscription(
+            uid,
+            cancel_at_period_end=1,
+            current_period_end=period_end,
+        )
+        return {
+            "status": "ok",
+            "message": "Abonamentul va fi anulat la sfârșitul perioadei curente.",
+            "current_period_end": period_end,
+        }
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=500, detail=f"Eroare Stripe: {str(e)}")
 
@@ -1048,6 +1100,7 @@ def _handle_checkout_completed(session: dict):
             plan=plan,
             status="active",
             current_period_end=period_end,
+            cancel_at_period_end=0,
         )
         print(f"✅ [Webhook] User {uid} → plan: {plan}, status: active")
     except Exception as e:
@@ -1064,6 +1117,7 @@ def _handle_subscription_updated(subscription: dict):
     period_end = datetime.fromtimestamp(
         subscription["current_period_end"], tz=timezone.utc
     ).isoformat()
+    cancel_at = 1 if subscription.get("cancel_at_period_end", False) else 0
 
     user = _get_user_by_stripe_customer(customer_id)
     if not user:
@@ -1076,12 +1130,13 @@ def _handle_subscription_updated(subscription: dict):
         plan=plan,
         status=status,
         current_period_end=period_end,
+        cancel_at_period_end=cancel_at,
     )
-    print(f"📝 [Webhook] Subscription updated: {user['uid']} → {plan}/{status}")
+    print(f"📝 [Webhook] Subscription updated: {user['uid']} → {plan}/{status} (cancel_at_period_end={bool(cancel_at)})")
 
 
 def _handle_subscription_deleted(subscription: dict):
-    """Subscription was fully canceled/expired."""
+    """Subscription was fully canceled/expired — period has ended, revoke access now."""
     customer_id = subscription.get("customer")
     subscription_id = subscription.get("id")
 
@@ -1095,8 +1150,9 @@ def _handle_subscription_deleted(subscription: dict):
         status="canceled",
         plan=None,
         stripe_subscription_id=None,
+        cancel_at_period_end=0,
     )
-    print(f"🚫 [Webhook] Subscription canceled: {user['uid']}")
+    print(f"🚫 [Webhook] Subscription fully ended: {user['uid']}")
 
 
 def _handle_payment_failed(invoice: dict):

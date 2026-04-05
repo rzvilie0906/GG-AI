@@ -27,6 +27,8 @@ export interface SubscriptionInfo {
   plan: Plan;
   status: SubStatus;
   current_period_end: string | null;
+  cancel_at_period_end?: boolean;
+  has_access?: boolean;
   tier_limits?: {
     max_analyses_per_day: number | null;   // null = unlimited
     max_risk_analyses_per_day: number | null;

@@ -459,7 +459,7 @@ export default function AccountPage() {
             </svg>
             Abonament
           </h2>
-          {subscription?.status === "active" ? (
+          {subscription?.has_access ? (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary text-sm">Plan activ</span>
@@ -470,16 +470,25 @@ export default function AccountPage() {
               <div className="h-px bg-white/[0.06]" />
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary text-sm">Status</span>
-                <span className="inline-flex items-center gap-1.5 text-success font-medium text-sm">
-                  <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                  Activ
-                </span>
+                {subscription.cancel_at_period_end ? (
+                  <span className="inline-flex items-center gap-1.5 text-warning font-medium text-sm">
+                    <span className="w-2 h-2 rounded-full bg-warning" />
+                    Se anulează
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-success font-medium text-sm">
+                    <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                    Activ
+                  </span>
+                )}
               </div>
               {subscription.current_period_end && (
                 <>
                   <div className="h-px bg-white/[0.06]" />
                   <div className="flex justify-between items-center">
-                    <span className="text-text-secondary text-sm">Următoarea facturare</span>
+                    <span className="text-text-secondary text-sm">
+                      {subscription.cancel_at_period_end ? "Acces activ până la" : "Următoarea facturare"}
+                    </span>
                     <span className="text-white text-sm">{new Date(subscription.current_period_end).toLocaleDateString("ro-RO", { year: "numeric", month: "long", day: "numeric" })}</span>
                   </div>
                 </>
@@ -488,15 +497,23 @@ export default function AccountPage() {
               <p className="text-xs text-text-muted">
                 Nu se oferă rambursări la anularea abonamentului. Accesul rămâne activ până la sfârșitul perioadei de facturare curente.
               </p>
-              <div className="flex gap-3 mt-2">
-                <button
-                  onClick={handleCancel}
-                  disabled={cancelLoading}
-                  className="flex-1 py-2.5 rounded-xl border border-danger/20 text-sm font-medium text-danger hover:bg-danger/10 transition disabled:opacity-50"
-                >
-                  {cancelLoading ? "Se deschide..." : "Anulează abonamentul"}
-                </button>
-              </div>
+              {subscription.cancel_at_period_end ? (
+                <div className="bg-warning/10 p-3 rounded-xl">
+                  <p className="text-warning text-sm font-medium">
+                    Abonamentul tău va expira la {new Date(subscription.current_period_end!).toLocaleDateString("ro-RO", { year: "numeric", month: "long", day: "numeric" })}. Până atunci, ai acces complet la toate funcțiile planului tău.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex gap-3 mt-2">
+                  <button
+                    onClick={handleCancel}
+                    disabled={cancelLoading}
+                    className="flex-1 py-2.5 rounded-xl border border-danger/20 text-sm font-medium text-danger hover:bg-danger/10 transition disabled:opacity-50"
+                  >
+                    {cancelLoading ? "Se deschide..." : "Anulează abonamentul"}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-6">
@@ -517,7 +534,7 @@ export default function AccountPage() {
         </div>
 
         {/* Upgrade Plan (if active but not elite) */}
-        {subscription?.status === "active" && subscription.plan !== "elite" && (
+        {subscription?.has_access && subscription.plan !== "elite" && !subscription.cancel_at_period_end && (
           <div className="card p-6 mb-6 border-primary/20">
             <div className="flex items-center justify-between">
               <div>

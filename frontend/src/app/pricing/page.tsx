@@ -49,7 +49,7 @@ function PricingContent() {
 
   // If user already has active subscription and NOT in upgrade mode, redirect to dashboard
   useEffect(() => {
-    if (!loading && subscription?.status === "active" && !isUpgradeMode) {
+    if (!loading && subscription?.has_access && !isUpgradeMode) {
       router.replace("/dashboard");
     }
   }, [subscription, loading, router, isUpgradeMode]);

@@ -42,7 +42,7 @@ function SuccessContent() {
 
   // Redirect to dashboard once subscription is active
   useEffect(() => {
-    if (subscription?.status === "active") {
+    if (subscription?.has_access) {
       if (pollRef.current) clearInterval(pollRef.current);
       setStatus("ready");
       const timer = setTimeout(() => {
@@ -63,11 +63,11 @@ function SuccessContent() {
         </div>
         <h1 className="text-3xl font-extrabold text-white mb-3">Plata a fost procesată!</h1>
         <p className="text-slate-400 text-lg mb-8">
-          {subscription?.status === "active"
+          {subscription?.has_access
             ? "Abonamentul tău este activ! Redirecționare către dashboard..."
             : "Se activează abonamentul... Vei fi redirecționat automat."}
         </p>
-        {subscription?.status !== "active" && status === "loading" && (
+        {!subscription?.has_access && status === "loading" && (
           <div className="mb-6 flex justify-center">
             <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full" />
           </div>
