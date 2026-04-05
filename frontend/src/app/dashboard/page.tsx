@@ -42,7 +42,7 @@ export default function Dashboard() {
       router.replace("/auth/verify");
       return;
     }
-    if (!subscription || subscription.status !== "active") {
+    if (!subscription || !subscription.has_access) {
       router.replace("/pricing");
       return;
     }

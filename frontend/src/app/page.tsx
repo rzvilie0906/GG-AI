@@ -53,13 +53,13 @@ export default function LandingPage() {
   }, []);
 
   function checkoutLink(priceId: string) {
-    if (user && subscription?.status === "active") return "/dashboard";
+    if (user && subscription?.has_access) return "/dashboard";
     if (user) return `/pricing?priceId=${priceId}`;
     return `/auth/signin?priceId=${priceId}`;
   }
 
   const isLoggedIn = !!user;
-  const isActive = subscription?.status === "active";
+  const isActive = !!subscription?.has_access;
 
   const userEmail = user?.email;
   const userName = user?.displayName;
