@@ -174,10 +174,13 @@ async def generate_all_tickets():
             continue
 
         print(f"[INFO] Găsite {len(matches)} meciuri pentru {cat_name}. Analizez premium primele {min(len(matches), 10)}...")
+        print(f"[DEBUG] Primele 3 meciuri: {[(m['home_team'], m['away_team'], m['start_time_utc']) for m in matches[:3]]}")
 
         analyze_ok = 0
+        analyze_fail = 0
         for m in matches[:10]: 
             try:
+                print(f"  [ANALYZE] {m['home_team']} vs {m['away_team']} ({m['sport']})...")
                 await analyze(AnalyzeRequest(
                     sport=m["sport"],
                     home_team=m["home_team"],
@@ -186,11 +189,13 @@ async def generate_all_tickets():
                     league=m["league_name"]
                 ), x_api_key=os.environ.get("APP_API_KEY", ""))
                 analyze_ok += 1
+                print(f"  [OK] ✅ {m['home_team']} vs {m['away_team']}")
                 await asyncio.sleep(1) 
             except Exception as ae:
-                print(f"[WARN] Analiza eșuată pentru {m['home_team']} vs {m['away_team']}: {ae}")
+                analyze_fail += 1
+                print(f"  [FAIL] ❌ {m['home_team']} vs {m['away_team']}: {type(ae).__name__}: {ae}")
                 continue
-        print(f"[INFO] Analize reușite: {analyze_ok}/{min(len(matches), 10)} pentru {cat_name}")
+        print(f"[INFO] Analize reușite: {analyze_ok}/{min(len(matches), 10)} pentru {cat_name} (eșuate: {analyze_fail})")
         
         # Pauză între faza de analiză și generarea biletului pentru a evita rate limits
         if analyze_ok > 0:
