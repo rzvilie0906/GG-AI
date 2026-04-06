@@ -955,8 +955,9 @@ async def get_daily_ticket(
 
     # If local file not found/stale, check Firestore (tickets uploaded by CI)
     fs_data = _load_from_firestore(type, ticket_date)
-    if fs_data:
+    if fs_data and fs_data.get("ticket"):
         return fs_data
+    # If Firestore has empty ticket (ticket:[]), don't cache it — fall through to regeneration
 
 
     async with ticket_lock:

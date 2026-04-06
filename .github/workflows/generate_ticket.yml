@@ -2,7 +2,12 @@ name: Daily Ticket Generator
 
 on:
   workflow_dispatch:
+  # Auto-trigger after Daily Sync finishes (even if delayed by GitHub Actions)
+  workflow_run:
+    workflows: ["Daily Sync"]
+    types: [completed]
   schedule:
+    # Safety-net cron in case sync workflow is skipped/failed
     - cron: '0 8 * 1-3,11-12 *'  # 10:00 Romania winter (EET, UTC+2)
     - cron: '0 7 * 4-10 *'       # 10:00 Romania summer (EEST, UTC+3)
 
@@ -12,6 +17,8 @@ env:
 jobs:
   run-script:
     runs-on: ubuntu-latest
+    # Skip if triggered by a failed sync run
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
