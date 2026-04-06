@@ -21,8 +21,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GG-AI — Analizator AI de Pariuri Sportive",
-  description: "AI-powered sports betting analysis. Daily value picks, smart tickets, and confidence scoring.",
+  title: "GG-AI — Analize AI Zilnice pentru Pariuri Sportive | GGAI",
+  description: "GG-AI (GGAI) este un analizator AI de pariuri sportive. Primești zilnic 4 bilete cu valoare din fotbal, baschet, hochei, tenis și baseball — cu scoruri de încredere și sfaturi AI.",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },

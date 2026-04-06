@@ -172,8 +172,8 @@ export default function LandingPage() {
             Meciuri actualizate zilnic la 09:00 · Bilete noi de la 10:00
           </div>
           <h1 className="lp-hero-h1">
-            Pariuri mai inteligente,<br />
-            alimentate de <span className="lp-gradient-text">inteligență artificială</span>
+            <span className="lp-gradient-text">GG-AI</span> — Pariuri mai inteligente,<br />
+            alimentate de inteligență artificială
           </h1>
           <p className="lp-hero-sub">
             Analizăm zilnic zeci de meciuri din fotbal, baschet, hochei, tenis și baseball.
@@ -315,17 +315,17 @@ export default function LandingPage() {
             <div className="lp-profit-side">
               <div className="lp-profit-info-card fade-in">
                 <div className="lp-profit-info-icon">📈</div>
-                <h4>De ce funcționează?</h4>
+                <h3>De ce funcționează?</h3>
                 <p>AI-ul nu pariază pe instinct. Analizează statistici concrete: formă recentă, medie goluri, H2H, clasament, accidentări + cote de la casele de pariuri.</p>
               </div>
               <div className="lp-profit-info-card fade-in">
                 <div className="lp-profit-info-icon">🎯</div>
-                <h4>Selecție cu valoare</h4>
+                <h3>Selecție cu valoare</h3>
                 <p>Fiecare meci este ales pentru că are cotă subevaluată — probabilitatea reală este mai mare decât ce oferă casele de pariuri.</p>
               </div>
               <div className="lp-profit-info-card fade-in">
                 <div className="lp-profit-info-icon">⚠️</div>
-                <h4>Disclaimer</h4>
+                <h3>Disclaimer</h3>
                 <p>Pariurile implică risc financiar. Niciun sistem nu garantează câștiguri 100%. Pariază responsabil. 18+.</p>
               </div>
             </div>
@@ -354,7 +354,7 @@ export default function LandingPage() {
             ].map((s, i) => (
               <div key={i} className="lp-security-card fade-in">
                 <div className="lp-security-icon">{s.icon}</div>
-                <h4>{s.title}</h4>
+                <h3>{s.title}</h3>
                 <p>{s.desc}</p>
               </div>
             ))}
@@ -395,10 +395,11 @@ export default function LandingPage() {
           </div>
           <div className="lp-footer-col">
             <h4>Produs</h4>
+            <Link href="/pricing">Prețuri & Planuri</Link>
+            <Link href="/dashboard">Dashboard</Link>
+            <Link href="/suport">Suport & Contact</Link>
             <a href="#beneficii">Beneficii</a>
             <a href="#cum-functioneaza">Cum Funcționează</a>
-            <a href="#profit">Exemplu Profit</a>
-            <a href="#preturi">Prețuri</a>
             <a href="#faq">FAQ</a>
           </div>
           <div className="lp-footer-col">
