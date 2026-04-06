@@ -187,7 +187,7 @@ async def generate_all_tickets():
                     away_team=m["away_team"],
                     match_date=azi_str,
                     league=m["league_name"]
-                ), x_api_key=os.environ.get("APP_API_KEY", ""))
+                ), x_api_key=os.environ.get("APP_API_KEY", ""), authorization=None)
                 analyze_ok += 1
                 print(f"  [OK] ✅ {m['home_team']} vs {m['away_team']}")
                 await asyncio.sleep(1) 
