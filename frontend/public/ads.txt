@@ -1,0 +1,4 @@
+# GG-AI (ggai.bet) - Authorized Digital Sellers
+# Currently no programmatic advertising is served on this site.
+# This file exists to declare that no unauthorized sellers are permitted.
+placeholder.example.com, placeholder, DIRECT

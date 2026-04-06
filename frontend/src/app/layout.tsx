@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+import Script from "next/script";
+
 import { AuthProviderWrapper } from "@/components/AuthProviderWrapper";
 import MaintenanceWarning from "@/components/MaintenanceWarning";
 import LazyCookieConsent from "@/components/LazyCookieConsent";
@@ -94,7 +96,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="ro" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+        <link rel="preconnect" href="https://www.googletagmanager.com" crossOrigin="anonymous" />
+      </head>
       <body className="min-h-screen antialiased font-ui">
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-VQCCBP2FPG"
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-VQCCBP2FPG');
+          `}
+        </Script>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
