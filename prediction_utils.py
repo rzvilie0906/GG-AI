@@ -251,72 +251,65 @@ def build_ticket_from_analyses(
     Returns:
         List of ticket pick dicts, or empty list if insufficient quality picks.
     """
-    def _collect_candidates(prob_threshold: float, odds_floor: float):
-        """Collect candidates passing the given thresholds."""
-        cands = []
-        for m in matches:
-            home = m["home_team"]
-            away = m["away_team"]
-            sport = m["sport"]
-            league = m["league_name"]
+    candidates = []
 
-            # Find the analysis for this match
-            analysis = None
+    for m in matches:
+        home = m["home_team"]
+        away = m["away_team"]
+        sport = m["sport"]
+        league = m["league_name"]
+
+        # Find the analysis for this match
+        analysis = None
+        for key, val in analyses.items():
+            if home.lower().replace(" ", "_") in key and away.lower().replace(" ", "_") in key:
+                analysis = val
+                break
+        # Fallback: partial match on home team
+        if not analysis:
+            home_lower = home.lower().replace(" ", "_")
             for key, val in analyses.items():
-                if home.lower().replace(" ", "_") in key and away.lower().replace(" ", "_") in key:
+                if home_lower in key:
                     analysis = val
                     break
-            # Fallback: partial match on home team
-            if not analysis:
-                home_lower = home.lower().replace(" ", "_")
-                for key, val in analyses.items():
-                    if home_lower in key:
-                        analysis = val
-                        break
 
-            if not analysis:
+        if not analysis:
+            continue
+
+        canonical = extract_canonical_prediction(analysis)
+        prob = canonical["main_probability"]
+        if isinstance(prob, str):
+            try:
+                prob = float(prob)
+            except ValueError:
                 continue
 
-            canonical = extract_canonical_prediction(analysis)
-            prob = canonical["main_probability"]
-            if isinstance(prob, str):
-                try:
-                    prob = float(prob)
-                except ValueError:
-                    continue
+        # Filter: only include picks with probability >= 55% and fair_odds in valid range
+        if prob < 55:
+            continue
 
-            if prob < prob_threshold:
-                continue
+        fair_odds = canonical["main_fair_odds"]
+        if isinstance(fair_odds, str):
+            try:
+                fair_odds = float(fair_odds)
+            except ValueError:
+                fair_odds = 0
 
-            fair_odds = canonical["main_fair_odds"]
-            if isinstance(fair_odds, str):
-                try:
-                    fair_odds = float(fair_odds)
-                except ValueError:
-                    fair_odds = 0
+        # Skip if fair_odds below 1.20 (too safe / no value)
+        if fair_odds > 0 and fair_odds < 1.20:
+            continue
 
-            if fair_odds > 0 and fair_odds < odds_floor:
-                continue
-
-            cands.append({
-                "match": f"{home} vs {away}",
-                "league": league,
-                "market": canonical["main_market"],
-                "pick": canonical["main_pick"],
-                "odds": str(round(fair_odds, 2)) if fair_odds > 0 else "N/A",
-                "reasoning": "; ".join(canonical["main_reasoning"][:2]) if canonical["main_reasoning"] else "",
-                "probability": prob,
-                "sport": sport,
-                "_source": "canonical_analysis",
-            })
-        return cands
-
-    # Primary pass: strict thresholds
-    candidates = _collect_candidates(prob_threshold=55, odds_floor=1.20)
-
-    # Fallback pass: relaxed thresholds if not enough picks
-    if len(candidates) < min_picks:
-        candidates = _collect_candidates(prob_threshold=48, odds_floor=1.10)
+        candidates.append({
+            "match": f"{home} vs {away}",
+            "league": league,
+            "market": canonical["main_market"],
+            "pick": canonical["main_pick"],
+            "odds": str(round(fair_odds, 2)) if fair_odds > 0 else "N/A",
+            "reasoning": "; ".join(canonical["main_reasoning"][:2]) if canonical["main_reasoning"] else "",
+            "probability": prob,
+            "sport": sport,
+            "_source": "canonical_analysis",
+        })
 
     # Sort by probability descending (safest picks first)
     candidates.sort(key=lambda c: c["probability"], reverse=True)

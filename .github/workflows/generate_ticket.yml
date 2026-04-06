@@ -101,4 +101,5 @@ jobs:
           git add daily_ticket_*.json data/daily_ticket_*.json
           # Only commit if there are changes
           git diff --cached --quiet || git commit -m "🎫 Update daily tickets $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main || true
           git push

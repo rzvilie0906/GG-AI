@@ -40,13 +40,7 @@ def _get_firestore_client():
     return firestore.client()
 
 def _upload_ticket_to_firestore(cat_name: str, data: dict):
-    """Upload a ticket to Firestore so the deployed backend can serve it.
-    Only uploads when running in CI (GitHub Actions) — never from the
-    first-visitor subprocess on Railway, to avoid overwriting CI-generated tickets.
-    """
-    if not os.environ.get("CI"):
-        print(f"[SKIP] Firestore upload skipped for {cat_name} (not CI environment)")
-        return
+    """Upload a ticket to Firestore so the deployed backend can serve it."""
     db = _get_firestore_client()
     if db is None:
         print(f"[ERR] Cannot upload {cat_name}: Firebase not initialized (missing service account file)")
@@ -233,11 +227,18 @@ async def generate_all_tickets():
             save_empty(cat_name, today_display, "Insuficiente meciuri cu valoare identificate.")
             continue
 
-        # Validate coherence — ensure no contradictions exist in the ticket
+        # Validate coherence — remove any picks that contradict the AI analysis
         coherence = validate_ticket_coherence(picks, analyses_map)
         if not coherence["valid"]:
+            contradiction_matches = set()
             for c in coherence["contradictions"]:
-                print(f"[CONTRADICTION] {c['match']}: ticket={c.get('user_pick')} vs AI={c.get('ai_pick')} ({c.get('severity')})")
+                print(f"[CONTRADICTION] {c['match']}: ticket={c.get('user_pick')} vs AI={c.get('ai_pick')} ({c.get('severity')}) — REMOVED")
+                contradiction_matches.add(c["match"])
+            picks = [p for p in picks if p.get("match") not in contradiction_matches]
+            if len(picks) < 2:
+                print(f"[WARN] Bilet {cat_name}: sub 2 picks rămase după eliminarea contradicțiilor.")
+                save_empty(cat_name, today_display, "Insuficiente meciuri cu valoare identificate.")
+                continue
 
         result_data = {"ticket": picks}
 
