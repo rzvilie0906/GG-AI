@@ -398,6 +398,8 @@ export default function LandingPage() {
             <Link href="/pricing">Prețuri & Planuri</Link>
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/suport">Suport & Contact</Link>
+            <Link href="/auth/signup">Creează un cont</Link>
+            <Link href="/auth/signin">Autentificare</Link>
             <a href="#beneficii">Beneficii</a>
             <a href="#cum-functioneaza">Cum Funcționează</a>
             <a href="#faq">FAQ</a>
@@ -407,6 +409,12 @@ export default function LandingPage() {
             <Link href="/confidentialitate">Politica de Confidențialitate</Link>
             <Link href="/termeni">Termeni și Condiții</Link>
             <Link href="/joc-responsabil">Joc Responsabil</Link>
+          </div>
+          <div className="lp-footer-col">
+            <h4>Resurse</h4>
+            <a href="https://stripe.com" target="_blank" rel="noopener noreferrer">Plăți prin Stripe</a>
+            <a href="https://www.begambleaware.org" target="_blank" rel="noopener noreferrer">BeGambleAware.org</a>
+            <a href="https://www.gamblingtherapy.org" target="_blank" rel="noopener noreferrer">GamblingTherapy.org</a>
           </div>
         </div>
         <div className="lp-container lp-footer-bottom">
