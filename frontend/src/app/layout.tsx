@@ -23,6 +23,15 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "GG-AI — Analizator AI de Pariuri Sportive",
   description: "AI-powered sports betting analysis. Daily value picks, smart tickets, and confidence scoring.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon-120.png", sizes: "120x120", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icon-120.png", sizes: "120x120", type: "image/png" },
+    ],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
