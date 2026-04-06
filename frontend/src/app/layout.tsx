@@ -22,7 +22,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "GG-AI — Analize AI Zilnice pentru Pariuri Sportive | GGAI",
-  description: "GG-AI (GGAI) este un analizator AI de pariuri sportive. Primești zilnic 4 bilete cu valoare din fotbal, baschet, hochei, tenis și baseball — cu scoruri de încredere și sfaturi AI.",
+  description: "GG-AI (GGAI) — analize AI zilnice pentru pariuri sportive. 4 bilete zilnice din fotbal, baschet, hochei, tenis și baseball cu scoruri de încredere.",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -36,9 +36,43 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "name": "GG-AI",
+        "alternateName": "GGAI",
+        "url": "https://ggai.bet",
+        "logo": "https://ggai.bet/logo.png",
+        "description": "Analize AI zilnice pentru pariuri sportive — fotbal, baschet, hochei, tenis și baseball.",
+        "sameAs": [],
+      },
+      {
+        "@type": "WebSite",
+        "name": "GG-AI",
+        "alternateName": "GGAI",
+        "url": "https://ggai.bet",
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://ggai.bet/#webpage",
+        "url": "https://ggai.bet",
+        "name": "GG-AI — Analize AI Zilnice pentru Pariuri Sportive",
+        "description": "GG-AI (GGAI) — analize AI zilnice pentru pariuri sportive. 4 bilete zilnice din fotbal, baschet, hochei, tenis și baseball cu scoruri de încredere.",
+        "isPartOf": { "@id": "https://ggai.bet/#website" },
+        "inLanguage": "ro",
+      },
+    ],
+  };
+
   return (
     <html lang="ro" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen antialiased font-ui">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <MaintenanceWarning />
         <AuthProviderWrapper>{children}</AuthProviderWrapper>
         <LazyCookieConsent />

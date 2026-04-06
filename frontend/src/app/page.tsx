@@ -368,7 +368,7 @@ export default function LandingPage() {
       <section className="lp-final-cta fade-in">
         <div className="lp-container lp-final-cta-inner">
           <h2>Pregătit să pariezi mai inteligent?</h2>
-          <p>Alătură-te GG-AI astăzi și primește analize AI zilnice livrate înainte de fiecare meci.</p>
+          <p>Alătură-te GGAI astăzi și primește analize AI zilnice pentru pariuri sportive, livrate înainte de fiecare meci.</p>
           <div className="lp-final-cta-buttons">
             <a href="#preturi" className="lp-btn lp-btn-primary lp-btn-lg">
               Începe Acum
@@ -391,7 +391,7 @@ export default function LandingPage() {
             <Link href="/" className="lp-nav-brand">
               <Image src="/logo.png" alt="GG-AI" width={160} height={160} className="lp-nav-logo-img" loading="lazy" />
             </Link>
-            <p>Analizator AI de pariuri sportive. Selecții zilnice cu valoare, bilete inteligente și scoruri de încredere.</p>
+            <p>GGAI — analize AI zilnice pentru pariuri sportive. Selecții cu valoare, bilete inteligente și scoruri de încredere.</p>
           </div>
           <div className="lp-footer-col">
             <h4>Produs</h4>

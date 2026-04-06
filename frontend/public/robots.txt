@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /auth/
+Disallow: /account
+Disallow: /success
+Disallow: /cancel
+Disallow: /dashboard
+
+Sitemap: https://ggai.bet/sitemap.xml
