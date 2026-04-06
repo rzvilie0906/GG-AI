@@ -258,10 +258,11 @@ export default function Dashboard() {
       if (kickoffRO.getHours() < 10) {
         syncDate.setDate(syncDate.getDate() - 1);
       }
-      // Build sync time: syncDate at 10:00 RO (approximate via offset)
-      const roOffset = nowRO.getTime() - now.getTime() + now.getTimezoneOffset() * 60000;
+      // Build sync time: syncDate at 10:00 RO → UTC
+      // nowRO - now = difference between RO wall-clock and local wall-clock (in ms)
+      const roToLocalOffset = nowRO.getTime() - now.getTime();
       const syncLocal = new Date(syncDate.getFullYear(), syncDate.getMonth(), syncDate.getDate(), 10, 0, 0);
-      const syncUTC = new Date(syncLocal.getTime() - roOffset);
+      const syncUTC = new Date(syncLocal.getTime() - roToLocalOffset);
 
       if (now < syncUTC) {
         const diffMs = syncUTC.getTime() - now.getTime();
