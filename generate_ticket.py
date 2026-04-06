@@ -40,7 +40,13 @@ def _get_firestore_client():
     return firestore.client()
 
 def _upload_ticket_to_firestore(cat_name: str, data: dict):
-    """Upload a ticket to Firestore so the deployed backend can serve it."""
+    """Upload a ticket to Firestore so the deployed backend can serve it.
+    Only uploads when running in CI (GitHub Actions) — never from the
+    first-visitor subprocess on Railway, to avoid overwriting CI-generated tickets.
+    """
+    if not os.environ.get("CI"):
+        print(f"[SKIP] Firestore upload skipped for {cat_name} (not CI environment)")
+        return
     db = _get_firestore_client()
     if db is None:
         print(f"[ERR] Cannot upload {cat_name}: Firebase not initialized (missing service account file)")
