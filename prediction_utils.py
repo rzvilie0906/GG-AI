@@ -10,6 +10,7 @@ Provides:
 
 import json
 import sqlite3
+import unicodedata
 from typing import Optional
 
 
@@ -18,6 +19,152 @@ def _db_connect():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
+
+
+def _strip_accents(s: str) -> str:
+    if not s:
+        return s
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', s)
+        if unicodedata.category(c) != 'Mn'
+    )
+
+
+_SPORT_TO_ODDS_PREFIX = {
+    "football": "soccer",
+    "basketball": "basketball",
+    "hockey": "icehockey",
+    "baseball": "baseball",
+    "tennis": "tennis",
+}
+
+# Preferred bookmakers in order (well-known, reliable)
+_PREFERRED_BOOKMAKERS = [
+    "williamhill", "unibet", "bet365", "pinnacle", "betfair",
+    "tipico_de", "marathonbet", "onexbet",
+]
+
+
+def _lookup_real_odd(sport: str, home_team: str, away_team: str,
+                     market: str, pick: str) -> float | None:
+    """
+    Look up the real bookmaker odd for a specific market+pick.
+    Returns the price from the first preferred bookmaker that has it, or None.
+    """
+    try:
+        conn = _db_connect()
+        conn.create_function("strip_accents", 1, lambda s: _strip_accents(s) if s else s)
+        cur = conn.cursor()
+        odds_prefix = _SPORT_TO_ODDS_PREFIX.get(sport, "")
+
+        # Fuzzy match: search by home team keyword
+        home_norm = _strip_accents(home_team).lower()
+        home_parts = [w for w in home_norm.replace('-', ' ').split() if len(w) > 2]
+        home_kw = max(home_parts, key=len) if home_parts else home_norm.split()[0]
+
+        cur.execute("""
+            SELECT bookmakers_json FROM match_odds
+            WHERE strip_accents(match_title) LIKE ? COLLATE NOCASE
+            AND sport_key LIKE ?
+        """, (f"%{home_kw}%", f"{odds_prefix}%"))
+        row = cur.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        bookmakers = json.loads(row["bookmakers_json"])
+        if not isinstance(bookmakers, list):
+            return None
+
+        # Map AI market names to odds API market keys
+        mkt_lower = market.lower()
+        if any(k in mkt_lower for k in ("1x2", "solist", "moneyline", "result")):
+            api_market = "h2h"
+        elif any(k in mkt_lower for k in ("total", "peste", "sub", "over", "under", "goluri", "puncte")):
+            api_market = "totals"
+        elif any(k in mkt_lower for k in ("btts", "both teams", "ambele", "gg")):
+            api_market = "btts"
+        elif any(k in mkt_lower for k in ("handicap", "spread")):
+            api_market = "spreads"
+        else:
+            api_market = "h2h"  # default fallback
+
+        pick_lower = pick.strip().lower()
+
+        # Normalize pick for matching
+        # "Yes"/"Da" → "Yes", "No"/"Nu" → "No" for BTTS
+        btts_yes = pick_lower in ("yes", "da", "gg")
+        btts_no = pick_lower in ("no", "nu", "ngg")
+
+        # Sort bookmakers: preferred first, then others
+        def bookie_priority(b):
+            key = b.get("key", "")
+            try:
+                return _PREFERRED_BOOKMAKERS.index(key)
+            except ValueError:
+                return 100
+
+        bookmakers.sort(key=bookie_priority)
+
+        for bookie in bookmakers:
+            for mkt in bookie.get("markets", []):
+                if mkt.get("key") != api_market:
+                    continue
+                for outcome in mkt.get("outcomes", []):
+                    name = outcome.get("name", "").strip().lower()
+                    price = outcome.get("price")
+                    point = outcome.get("point")
+
+                    if not isinstance(price, (int, float)) or price <= 0:
+                        continue
+
+                    matched = False
+
+                    if api_market == "h2h":
+                        # Match team name or Draw
+                        if pick_lower in ("x", "draw", "egal"):
+                            matched = name == "draw"
+                        else:
+                            # Match by team keyword
+                            pick_kw = _strip_accents(pick).lower()
+                            pick_parts = [w for w in pick_kw.replace('-', ' ').split() if len(w) > 2]
+                            pk = max(pick_parts, key=len) if pick_parts else pick_kw
+                            matched = pk in _strip_accents(name).lower()
+
+                    elif api_market == "totals":
+                        # Match Over/Under + optional point
+                        if "peste" in pick_lower or "over" in pick_lower:
+                            matched = name == "over"
+                        elif "sub" in pick_lower or "under" in pick_lower:
+                            matched = name == "under"
+                        # If pick has a threshold (e.g. "Over 2.5"), also check point
+                        if matched and point is not None:
+                            import re
+                            nums = re.findall(r'\d+\.?\d*', pick)
+                            if nums:
+                                matched = abs(float(nums[0]) - point) < 0.01
+
+                    elif api_market == "btts":
+                        if btts_yes:
+                            matched = name == "yes"
+                        elif btts_no:
+                            matched = name == "no"
+
+                    elif api_market == "spreads":
+                        # Match team name in spread
+                        pick_kw = _strip_accents(pick).lower()
+                        pick_parts = [w for w in pick_kw.replace('-', ' ').split() if len(w) > 2]
+                        pk = max(pick_parts, key=len) if pick_parts else pick_kw
+                        matched = pk in _strip_accents(name).lower()
+
+                    if matched:
+                        return round(price, 2)
+
+        return None
+    except Exception as e:
+        print(f"⚠️ [REAL_ODD] Lookup error: {e}")
+        return None
 
 
 def extract_canonical_prediction(analysis_json: dict) -> dict:
@@ -240,6 +387,9 @@ def build_ticket_from_analyses(
     """
     Build a ticket deterministically by selecting the best main_bets from cached analyses.
     No LLM call — purely data-driven selection from the canonical predictions.
+    Uses real bookmaker odds instead of AI fair_odds.
+    Pick count is flexible: targets 3 picks, can shrink to 2 if combined probability
+    is very high, or expand to 4 if individual probabilities are lower but still valuable.
 
     Args:
         matches: List of match dicts with sport, home_team, away_team, league_name
@@ -299,12 +449,24 @@ def build_ticket_from_analyses(
         if fair_odds > 0 and fair_odds < 1.20:
             continue
 
+        # Look up real bookmaker odds for this pick
+        real_odd = _lookup_real_odd(
+            sport, home, away,
+            canonical["main_market"], canonical["main_pick"]
+        )
+        if real_odd:
+            display_odds = str(real_odd)
+        elif fair_odds > 0:
+            display_odds = str(round(fair_odds, 2))
+        else:
+            display_odds = "N/A"
+
         candidates.append({
             "match": f"{home} vs {away}",
             "league": league,
             "market": canonical["main_market"],
             "pick": canonical["main_pick"],
-            "odds": str(round(fair_odds, 2)) if fair_odds > 0 else "N/A",
+            "odds": display_odds,
             "reasoning": "; ".join(canonical["main_reasoning"][:2]) if canonical["main_reasoning"] else "",
             "probability": prob,
             "sport": sport,
@@ -332,6 +494,27 @@ def build_ticket_from_analyses(
 
     if len(candidates) < min_picks:
         return []
+
+    # ── Dynamic pick count: target 3, flex between 2 and 4 ──
+    # If top picks have very high probability (avg ≥ 70%), 2 picks suffice.
+    # If probabilities are moderate (avg 55-65%), include up to 4 for value.
+    # Default target is 3 picks.
+    if len(candidates) > 3:
+        avg_prob = sum(c["probability"] for c in candidates[:3]) / 3
+        if avg_prob >= 70:
+            # Very confident — keep 2-3 picks (lower total odds, higher win chance)
+            candidates = candidates[:3]
+        elif avg_prob < 62:
+            # Moderate confidence — include 4th pick for more value
+            candidates = candidates[:4]
+        else:
+            # Normal — 3 picks is the sweet spot
+            candidates = candidates[:3]
+    # If exactly 3 candidates with very high avg prob, trim to 2
+    if len(candidates) == 3:
+        avg_prob = sum(c["probability"] for c in candidates) / 3
+        if avg_prob >= 75:
+            candidates = candidates[:2]
 
     # Clean up internal fields before returning
     for c in candidates:
