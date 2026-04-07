@@ -121,19 +121,11 @@ export default function Dashboard() {
 
   function isInSelectedDay(fixture: Fixture, selectedIso: string) {
     // selectedIso is YYYY-MM-DD (Europe/Bucharest)
-    // Compute the start and end of the selected day in Europe/Bucharest
-    const [year, month, day] = selectedIso.split("-").map(Number);
-    const tz = "Europe/Bucharest";
-    // Start of day in Europe/Bucharest
-    const start = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-    // End of day in Europe/Bucharest
-    const end = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
-    // Convert start/end to timestamps in Europe/Bucharest
-    const startRO = new Date(start.toLocaleString("en-US", { timeZone: tz }));
-    const endRO = new Date(end.toLocaleString("en-US", { timeZone: tz }));
-    // Convert fixture time to Europe/Bucharest
-    const fixtureRO = new Date(new Date(fixture.start_time_utc).toLocaleString("en-US", { timeZone: tz }));
-    return fixtureRO >= startRO && fixtureRO <= endRO;
+    // Convert fixture UTC time to Romania date (YYYY-MM-DD) and compare directly
+    const fixtureDate = new Date(fixture.start_time_utc);
+    // en-CA locale outputs YYYY-MM-DD which matches selectedIso format
+    const fixtureDateRO = fixtureDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
+    return fixtureDateRO === selectedIso;
   }
 
   const filteredFixtures = (searchQuery.trim()
