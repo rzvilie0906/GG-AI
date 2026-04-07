@@ -23,8 +23,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GG-AI — Analize AI Zilnice pentru Pariuri Sportive | GGAI",
-  description: "GG-AI (GGAI) — analize AI zilnice pentru pariuri sportive. 4 bilete zilnice din fotbal, baschet, hochei, tenis și baseball cu scoruri de încredere.",
+  title: "GG-AI — Analize AI Zilnice pentru Pariuri Sportive | GGAI.bet",
+  description: "GG-AI (GGAI) — analize AI zilnice pentru pariuri sportive pe ggai.bet. 4 bilete zilnice din fotbal, baschet, hochei, tenis și baseball cu scoruri de încredere. Vizitează gg-ai bet pentru pariuri inteligente.",
+  keywords: ["GGAI", "GG-AI", "ggai bet", "gg-ai bet", "ggai.bet", "gg ai", "gg-ai pariuri", "ggai pariuri", "analize AI pariuri sportive", "bilete zilnice pariuri", "pariuri inteligente AI"],
   metadataBase: new URL("https://ggai.bet"),
   alternates: {
     canonical: "/",
@@ -34,21 +35,21 @@ export const metadata: Metadata = {
     locale: "ro_RO",
     url: "https://ggai.bet",
     siteName: "GG-AI",
-    title: "GG-AI — Analize AI Zilnice pentru Pariuri Sportive",
-    description: "GG-AI (GGAI) — analize AI zilnice pentru pariuri sportive. 4 bilete zilnice din fotbal, baschet, hochei, tenis și baseball cu scoruri de încredere.",
+    title: "GG-AI (GGAI) — Analize AI Zilnice pentru Pariuri Sportive | ggai.bet",
+    description: "GG-AI (GGAI) — analize AI zilnice pentru pariuri sportive pe ggai.bet. 4 bilete zilnice din fotbal, baschet, hochei, tenis și baseball cu scoruri de încredere.",
     images: [
       {
         url: "/logo.png",
         width: 778,
         height: 622,
-        alt: "GG-AI Logo",
+        alt: "GG-AI (GGAI) Logo — ggai.bet",
       },
     ],
   },
   twitter: {
     card: "summary",
-    title: "GG-AI — Analize AI Zilnice pentru Pariuri Sportive",
-    description: "GG-AI (GGAI) — analize AI zilnice pentru pariuri sportive. 4 bilete zilnice din fotbal, baschet, hochei, tenis și baseball.",
+    title: "GG-AI (GGAI) — Analize AI Pariuri Sportive | ggai.bet",
+    description: "GG-AI (GGAI) — analize AI zilnice pe ggai.bet. 4 bilete zilnice din fotbal, baschet, hochei, tenis și baseball. Vizitează gg-ai bet!",
     images: ["/logo.png"],
   },
   icons: {
@@ -70,16 +71,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       {
         "@type": "Organization",
         "name": "GG-AI",
-        "alternateName": "GGAI",
+        "alternateName": ["GGAI", "gg-ai", "ggai bet", "gg-ai bet", "ggai.bet", "gg ai"],
         "url": "https://ggai.bet",
         "logo": "https://ggai.bet/logo.png",
-        "description": "Analize AI zilnice pentru pariuri sportive — fotbal, baschet, hochei, tenis și baseball.",
+        "description": "GG-AI (GGAI) — analize AI zilnice pentru pariuri sportive pe ggai.bet. Fotbal, baschet, hochei, tenis și baseball.",
         "sameAs": [],
       },
       {
         "@type": "WebSite",
         "name": "GG-AI",
-        "alternateName": "GGAI",
+        "alternateName": ["GGAI", "ggai bet", "gg-ai bet", "ggai.bet", "gg ai"],
         "url": "https://ggai.bet",
       },
       {
@@ -122,8 +123,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <LazyCookieConsent />
         <noscript>
           <div style={{ padding: "40px 20px", maxWidth: 800, margin: "0 auto", color: "#e2e8f0" }}>
-            <h1>GG-AI — Analize AI Zilnice pentru Pariuri Sportive</h1>
-            <p>GG-AI (GGAI) este o platformă de analize AI zilnice pentru pariuri sportive. Primești zilnic 4 bilete cu valoare din fotbal, baschet, hochei, tenis și baseball — cu scoruri de încredere și sfaturi AI.</p>
+            <h1>GG-AI (GGAI) — Analize AI Zilnice pentru Pariuri Sportive | ggai.bet</h1>
+            <p>GG-AI (GGAI), disponibil pe ggai.bet (gg-ai bet), este o platformă de analize AI zilnice pentru pariuri sportive. Primești zilnic 4 bilete cu valoare din fotbal, baschet, hochei, tenis și baseball — cu scoruri de încredere și sfaturi AI.</p>
             <h2>De ce să alegi GG-AI?</h2>
             <p>Analiză AI Avansată cu GPT-4o — analizăm fiecare meci cu date live: formă, H2H, accidentări, cote. 4 bilete zilnice generate automat: mixt, fotbal, baschet și hochei. Cote calculate matematic, analizor de risc bilet, actualizări zilnice la 09:00 și acoperire pe 5 sporturi.</p>
             <h2>Cum Funcționează</h2>
