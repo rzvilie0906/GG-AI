@@ -394,7 +394,7 @@ export default function LandingPage() {
             <p>GGAI — analize AI zilnice pentru pariuri sportive. Selecții cu valoare, bilete inteligente și scoruri de încredere.</p>
           </div>
           <div className="lp-footer-col">
-            <h4>Produs</h4>
+            <h3>Produs</h3>
             <Link href="/pricing">Prețuri & Planuri</Link>
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/suport">Suport & Contact</Link>
@@ -405,16 +405,16 @@ export default function LandingPage() {
             <a href="#faq">FAQ</a>
           </div>
           <div className="lp-footer-col">
-            <h4>Legal</h4>
+            <h3>Legal</h3>
             <Link href="/confidentialitate">Politica de Confidențialitate</Link>
             <Link href="/termeni">Termeni și Condiții</Link>
             <Link href="/joc-responsabil">Joc Responsabil</Link>
           </div>
           <div className="lp-footer-col">
-            <h4>Resurse</h4>
+            <h3>Resurse</h3>
             <a href="https://stripe.com" target="_blank" rel="noopener noreferrer">Plăți prin Stripe</a>
             <a href="https://www.begambleaware.org" target="_blank" rel="noopener noreferrer">BeGambleAware.org</a>
-            <a href="https://www.gamblingtherapy.org" target="_blank" rel="noopener noreferrer">GamblingTherapy.org</a>
+            <a href="https://www.gamblingtherapy.org/en" target="_blank" rel="noopener noreferrer">GamblingTherapy.org</a>
           </div>
         </div>
         <div className="lp-container lp-footer-bottom">

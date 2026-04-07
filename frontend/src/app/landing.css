@@ -371,7 +371,7 @@
 .lp-footer { background: var(--lp-surface); border-top: 1px solid var(--lp-border); padding: 60px 0 0; }
 .lp-footer-inner { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 60px; }
 .lp-footer-brand p { color: var(--lp-text-muted); font-size: 13px; line-height: 1.6; margin-top: 12px; max-width: 320px; }
-.lp-footer-col h4 { font-size: 14px; font-weight: 700; margin-bottom: 16px; color: white; }
+.lp-footer-col h3 { font-size: 14px; font-weight: 700; margin-bottom: 16px; color: white; }
 .lp-footer-col a { display: block; color: var(--lp-text-muted); font-size: 13px; text-decoration: none; padding: 4px 0; transition: color .2s; }
 .lp-footer-col a:hover { color: white; }
 .lp-footer-bottom {
