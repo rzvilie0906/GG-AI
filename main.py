@@ -919,7 +919,6 @@ async def get_daily_ticket(
         require_api_key(x_api_key)
     
     # Ticket window: 10:00 today -> 10:00 tomorrow (Romanian time)
-    # Ticket window: 10:00 today -> 10:00 tomorrow (Romanian time)
     ro = _ro_tz()
     now_ro = datetime.now(ro)
     if now_ro.hour < 10:
@@ -944,6 +943,7 @@ async def get_daily_ticket(
             pass
         return None
 
+    # 1) Check local file
     try:
         if os.path.exists(file_name):
             with open(file_name, "r", encoding="utf-8") as f:
@@ -953,60 +953,18 @@ async def get_daily_ticket(
     except Exception:
         pass
 
-    # If local file not found/stale, check Firestore (tickets uploaded by CI)
+    # 2) Check Firestore (tickets uploaded by CI pipeline)
     fs_data = _load_from_firestore(type, ticket_date)
     if fs_data:
         return fs_data
 
-
-    async with ticket_lock:
-        if os.path.exists(file_name):
-            with open(file_name, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if data.get("date") == ticket_date and data.get("ticket"):
-                return data
-
-        print(f"⚠️ [FIRST VISITOR] Pornim generarea biletelor...")
-
-        # Romanian message for first visitor after 10:00
-        eta = "aprox. 1 minut"
-        first_visitor_msg = (
-            "Generarea acestui tip de bilet nu este disponibilă în acest moment. "
-            "Motiv posibil: nu există suficiente meciuri pentru această categorie sau biletul zilnic nu a fost încă generat. "
-            "Încercați mai târziu!"
-        )
-
-        try:
-
-            import sys
-            import subprocess
-
-            python_exe = sys.executable
-            script_path = os.path.join(os.path.dirname(__file__), "generate_ticket.py")
-            def run_script():
-                return subprocess.run(
-                    [python_exe, script_path],
-                    capture_output=True,
-                    text=True,
-                    encoding='utf-8'
-                )
-
-            result = await asyncio.to_thread(run_script)
-
-            if result.returncode == 0:
-                print("✅ Generare terminată cu succes.")
-                if os.path.exists(file_name):
-                    with open(file_name, "r", encoding="utf-8") as f:
-                        return json.load(f)
-            else:
-                print(f"❌ Scriptul a crăpat:\n{result.stderr}")
-                return {"ticket": [], "message": first_visitor_msg}
-
-        except Exception as e:
-            print(f"❌ Eroare la execuție: {e}")
-            return {"ticket": [], "message": first_visitor_msg}
-
-    return {"ticket": [], "message": first_visitor_msg}
+    # 3) No ticket available yet — return empty with message (no on-the-fly generation)
+    return {
+        "ticket": [],
+        "total_odds": 0,
+        "date": ticket_date,
+        "message": "Biletul zilei nu a fost generat încă. Revino după ora 10:00 pentru a vedea recomandarea AI.",
+    }
     
 @app.post("/verify-ticket")
 def verify_ticket(data: TicketVerifyRequest, request: Request, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { loadDailyTicket as fetchDailyTicket } from "@/lib/api";
+import { loadDailyTicketFromFirestore, loadDailyTicket as fetchDailyTicketAPI } from "@/lib/api";
 import { DailyTicketData } from "@/lib/types";
 import { Star, Zap } from "./Icons";
 
@@ -26,8 +26,15 @@ export default function DailyTicket() {
     setLoading(true);
     setError(false);
     try {
-      const result = await fetchDailyTicket(type);
-      setData(result);
+      // 1) Try Firestore directly (most reliable — tickets uploaded by CI)
+      const fsData = await loadDailyTicketFromFirestore(type);
+      if (fsData) {
+        setData(fsData);
+        return;
+      }
+      // 2) Fallback to backend API (if Firestore unavailable or rules block)
+      const apiData = await fetchDailyTicketAPI(type);
+      setData(apiData);
     } catch {
       setError(true);
     } finally {

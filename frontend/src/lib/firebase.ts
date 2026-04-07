@@ -4,6 +4,7 @@
 // asynchronously on first use.
 
 import type { Auth } from "firebase/auth";
+import type { Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -14,6 +15,12 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+/** Get or initialise the Firebase app instance (shared by Auth + Firestore). */
+async function _getApp() {
+  const { initializeApp, getApps } = await import("firebase/app");
+  return getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+}
+
 let _initPromise: Promise<{ auth: Auth; googleProvider: any }> | null = null;
 
 /** Lazily initialise the Firebase app + Auth.  Subsequent calls return the
@@ -21,12 +28,26 @@ let _initPromise: Promise<{ auth: Auth; googleProvider: any }> | null = null;
 export function getFirebaseAuth() {
   if (!_initPromise) {
     _initPromise = Promise.all([
-      import("firebase/app"),
+      _getApp(),
       import("firebase/auth"),
-    ]).then(([{ initializeApp, getApps }, { getAuth, GoogleAuthProvider }]) => {
-      const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+    ]).then(([app, { getAuth, GoogleAuthProvider }]) => {
       return { auth: getAuth(app), googleProvider: new GoogleAuthProvider() };
     });
   }
   return _initPromise;
+}
+
+let _firestorePromise: Promise<Firestore> | null = null;
+
+/** Lazily initialise Firestore.  Only downloads the SDK when first called. */
+export function getFirestoreDb(): Promise<Firestore> {
+  if (!_firestorePromise) {
+    _firestorePromise = Promise.all([
+      _getApp(),
+      import("firebase/firestore"),
+    ]).then(([app, { getFirestore }]) => {
+      return getFirestore(app);
+    });
+  }
+  return _firestorePromise;
 }

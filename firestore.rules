@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Daily tickets — readable by any authenticated user
+    match /daily_tickets/{category} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only admin SDK (backend/CI) can write
+    }
+
+    // Sync metadata — readable by any authenticated user (for sync status checks)
+    match /sync_meta/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Everything else — admin SDK only (no client access)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

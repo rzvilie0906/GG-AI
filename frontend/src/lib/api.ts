@@ -1,4 +1,5 @@
 import { Fixture, League, AnalysisResult, DailyTicketData, RiskAnalysis, TicketPick } from "./types";
+import { getFirestoreDb } from "./firebase";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -242,4 +243,84 @@ export async function analyzeTicket(picks: TicketPick[]): Promise<RiskAnalysis> 
 
   const data = await r.json();
   return data.risk_analysis;
+}
+
+// ── Firestore Direct Access ─────────────────────────────────────
+// Read daily tickets and sync status directly from Firestore,
+// bypassing the FastAPI backend for reliability.
+
+/** Compute today's ticket date string (dd.MM.yyyy) using the 9:00 RO window. */
+function _todayTicketDate(): string {
+  const now = new Date();
+  const nowRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
+  // Ticket window: 10:00 today → 10:00 tomorrow (generator runs at 10:00 RO)
+  // Before 10:00 RO → yesterday's ticket
+  if (nowRO.getHours() < 10) {
+    const yesterday = new Date(nowRO);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return `${String(yesterday.getDate()).padStart(2, "0")}.${String(yesterday.getMonth() + 1).padStart(2, "0")}.${yesterday.getFullYear()}`;
+  }
+  return `${String(nowRO.getDate()).padStart(2, "0")}.${String(nowRO.getMonth() + 1).padStart(2, "0")}.${nowRO.getFullYear()}`;
+}
+
+/** Load a daily ticket directly from Firestore (no backend needed). */
+export async function loadDailyTicketFromFirestore(type: string): Promise<DailyTicketData | null> {
+  try {
+    const db = await getFirestoreDb();
+    const { doc, getDoc } = await import("firebase/firestore");
+    const snap = await getDoc(doc(db, "daily_tickets", type));
+    if (!snap.exists()) return null;
+    const data = snap.data() as DailyTicketData;
+    const expectedDate = _todayTicketDate();
+    // Only return if ticket date matches today's window
+    if (data.date !== expectedDate) return null;
+    return data;
+  } catch (e) {
+    console.warn("[Firestore] Daily ticket load failed:", e);
+    return null;
+  }
+}
+
+/** Check if today's odds sync has completed (sync runs at ~09:00 RO). */
+export async function checkFirestoreSyncStatus(): Promise<{
+  synced: boolean;
+  timestamp: string | null;
+  oddsCount: number;
+}> {
+  try {
+    const db = await getFirestoreDb();
+    const { doc, getDoc } = await import("firebase/firestore");
+    const snap = await getDoc(doc(db, "sync_meta", "last_sync"));
+    if (!snap.exists()) return { synced: false, timestamp: null, oddsCount: 0 };
+
+    const meta = snap.data();
+    const timestamp: string | null = meta.timestamp || null;
+    const oddsCount: number = meta.odds_count || 0;
+
+    if (!timestamp) return { synced: false, timestamp: null, oddsCount: 0 };
+
+    // Determine the start of today's sync window (09:00 RO)
+    const now = new Date();
+    const nowRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
+    const windowStart = new Date(nowRO);
+    if (nowRO.getHours() < 9) {
+      // Before 09:00 RO → yesterday's window
+      windowStart.setDate(windowStart.getDate() - 1);
+    }
+    windowStart.setHours(9, 0, 0, 0);
+
+    // Convert windowStart (RO wall-clock) back to a comparable UTC time
+    const roOffsetMs = nowRO.getTime() - now.getTime();
+    const cutoffUTC = new Date(windowStart.getTime() - roOffsetMs);
+
+    const syncTime = new Date(timestamp);
+    return {
+      synced: syncTime >= cutoffUTC && oddsCount > 0,
+      timestamp,
+      oddsCount,
+    };
+  } catch (e) {
+    console.warn("[Firestore] Sync status check failed:", e);
+    return { synced: false, timestamp: null, oddsCount: 0 };
+  }
 }

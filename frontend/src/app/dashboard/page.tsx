@@ -19,6 +19,7 @@ import {
   loadFixtures as fetchFixtures,
   analyzeMatch as apiAnalyzeMatch,
   analyzeTicket as apiAnalyzeTicket,
+  checkFirestoreSyncStatus,
 } from "@/lib/api";
 import { labelSport, nowStr, buildMatchKey } from "@/lib/utils";
 import { Fixture, League, TicketPick, AnalysisResult, RiskAnalysis } from "@/lib/types";
@@ -84,6 +85,8 @@ export default function Dashboard() {
     eta: string;
     availableAt: string;
   } | null>(null);
+
+  const [oddsSynced, setOddsSynced] = useState<boolean | null>(null); // null = loading
 
   const isAnalyzingRef = useRef(false);
 
@@ -179,6 +182,9 @@ export default function Dashboard() {
       const ok = await checkApiHealth();
       setApiOnline(ok);
 
+      // Check if today's odds are synced in Firestore (9:00 RO window)
+      checkFirestoreSyncStatus().then(({ synced }) => setOddsSynced(synced)).catch(() => setOddsSynced(false));
+
       const defaultDate = await fetchDefaultDate();
       setSelectedDate(defaultDate);
 
@@ -244,24 +250,48 @@ export default function Dashboard() {
     setAnalysisNotAvailable(null);
     setPickInput("");
 
-    // ── Check if analysis window is open (daily sync at 10:00 RO) ──
-    // Matches from 10:00 RO today to 09:59 RO tomorrow are analyzable after today's 10:00 sync.
-    const now = new Date();
-    const nowRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
+    // ── Check if today's odds are available (daily sync at 09:00 RO) ──
+    // Analysis requires synced odds. The window is 09:00 RO today → 09:00 RO tomorrow.
+    if (oddsSynced === false) {
+      const now = new Date();
+      const nowRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
+      // Compute next 09:00 RO
+      const next9 = new Date(nowRO);
+      if (nowRO.getHours() >= 9) {
+        next9.setDate(next9.getDate() + 1);
+      }
+      next9.setHours(9, 0, 0, 0);
+      const roToLocalOffset = nowRO.getTime() - now.getTime();
+      const next9UTC = new Date(next9.getTime() - roToLocalOffset);
+      const diffMs = next9UTC.getTime() - now.getTime();
+      const hours = Math.floor(diffMs / 3600000);
+      const mins = Math.floor((diffMs % 3600000) / 60000);
+      const etaStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+      const dd = String(nowRO.getDate()).padStart(2, "0");
+      const mm = String(nowRO.getMonth() + 1).padStart(2, "0");
+      const yyyy = nowRO.getFullYear();
+      setAnalysisNotAvailable({
+        message: `Cotele de azi nu au fost sincronizate încă din Firestore. Analiza va fi disponibilă după sincronizarea zilnică (~09:00).`,
+        eta: etaStr,
+        availableAt: next9UTC.toISOString(),
+      });
+      return;
+    }
+
     const startTimeUtc = fixture.start_time_utc;
 
     if (startTimeUtc) {
+      const now = new Date();
+      const nowRO = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
       const kickoff = new Date(startTimeUtc);
       const kickoffRO = new Date(kickoff.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
-      // Matches 10:00-23:59 RO → same day's sync; 00:00-09:59 RO → previous day's sync
+      // Matches 09:00-23:59 RO → same day's sync; 00:00-08:59 RO → previous day's sync
       const syncDate = new Date(kickoffRO);
-      if (kickoffRO.getHours() < 10) {
+      if (kickoffRO.getHours() < 9) {
         syncDate.setDate(syncDate.getDate() - 1);
       }
-      // Build sync time: syncDate at 10:00 RO → UTC
-      // nowRO - now = difference between RO wall-clock and local wall-clock (in ms)
       const roToLocalOffset = nowRO.getTime() - now.getTime();
-      const syncLocal = new Date(syncDate.getFullYear(), syncDate.getMonth(), syncDate.getDate(), 10, 0, 0);
+      const syncLocal = new Date(syncDate.getFullYear(), syncDate.getMonth(), syncDate.getDate(), 9, 0, 0);
       const syncUTC = new Date(syncLocal.getTime() - roToLocalOffset);
 
       if (now < syncUTC) {
@@ -273,7 +303,7 @@ export default function Dashboard() {
         const mm = String(syncDate.getMonth() + 1).padStart(2, "0");
         const yyyy = syncDate.getFullYear();
         setAnalysisNotAvailable({
-          message: `Analiza va fi disponibilă pe ${dd}.${mm}.${yyyy} după sincronizarea zilnică (~10:00).`,
+          message: `Analiza va fi disponibilă pe ${dd}.${mm}.${yyyy} după sincronizarea zilnică (~09:00).`,
           eta: etaStr,
           availableAt: syncUTC.toISOString(),
         });
@@ -282,7 +312,9 @@ export default function Dashboard() {
     }
 
     const matchDate = selectedDate || (() => {
-      return `${nowRO.getFullYear()}-${String(nowRO.getMonth() + 1).padStart(2, "0")}-${String(nowRO.getDate()).padStart(2, "0")}`;
+      const _now = new Date();
+      const _nowRO = new Date(_now.toLocaleString("en-US", { timeZone: "Europe/Bucharest" }));
+      return `${_nowRO.getFullYear()}-${String(_nowRO.getMonth() + 1).padStart(2, "0")}-${String(_nowRO.getDate()).padStart(2, "0")}`;
     })();
 
     setAnalysisLoading(true);
