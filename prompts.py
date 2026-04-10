@@ -53,7 +53,7 @@ ANALIZA (section1_analysis): 6-10 rânduri, OBLIGATORIU conține CIFRE CONCRETE:
 - Formă recentă cu SCOR EXACT: "W 2-0, W 1-0, D 1-1, L 0-2, W 3-1" (extrage din datele primite)
 - Medie goluri marcate/primite per meci (ex: "2.1 goluri marcate, 0.8 primite pe meci")
 - H2H cu scoruri exacte dacă există (ex: "Ultimele 3 H2H: 2-1, 0-0, 1-3")
-- Clasament cu poziție și puncte (ex: "Locul 3 cu 45p vs Locul 12 cu 28p")
+- Clasament cu poziție și puncte din CLASAMENT ACTUALIZAT dacă e furnizat (ex: "Locul 3 cu 45p vs Locul 12 cu 28p"). Folosește EXACT datele din clasament, NU inventa poziții.
 - Statistici defensive/ofensive cu numere (ex: "Cele mai puține goluri primite din ligă: 12 în 20 meciuri")
 - NICIODATĂ fraze vagi gen "echipă solidă defensiv" sau "formă bună" FĂRĂ cifre care să le susțină
 - Fiecare afirmație TREBUIE însoțită de un număr sau scor concret din datele primite

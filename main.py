@@ -328,6 +328,46 @@ def get_exact_stats(response_data, team_id, sport):
         "string": f"{w} Victorii, {d} Egaluri, {l} Înfrângeri (Ultimele {len(last_10)} meciuri)"
     }
 
+def format_standings_for_prompt(standings: list, home_team: str, away_team: str, sport: str) -> str:
+    """Format the full league standings into a readable string for the AI prompt."""
+    if not standings:
+        return ""
+    
+    lines = ["CLASAMENT ACTUALIZAT (complet):"]
+    home_kw = strip_accents(home_team).lower()
+    away_kw = strip_accents(away_team).lower()
+    
+    for entry in standings:
+        rank = entry.get("rank", "?")
+        team = entry.get("team", "?")
+        
+        if sport in ("football", "baseball"):
+            pts = entry.get("points", "?")
+            played = entry.get("played", "?")
+            w = entry.get("w", "?")
+            d = entry.get("d", "?")
+            l = entry.get("l", "?")
+            gf = entry.get("gf", "?")
+            ga = entry.get("ga", "?")
+            line = f"  {rank}. {team} — {pts}p | {played}j | {w}V-{d}E-{l}Î | Goluri: {gf}-{ga}"
+        else:
+            # Basketball / Hockey: no draws, points for/against
+            w = entry.get("w", "?")
+            l = entry.get("l", "?")
+            pf = entry.get("pf", "?")
+            pa = entry.get("pa", "?")
+            line = f"  {rank}. {team} — {w}V-{l}Î | PF: {pf} PA: {pa}"
+        
+        # Highlight the two teams in the match
+        team_norm = strip_accents(team).lower()
+        if any(kw in team_norm for kw in home_kw.split() if len(kw) > 2) or \
+           any(kw in team_norm for kw in away_kw.split() if len(kw) > 2):
+            line += "  ◄"
+        
+        lines.append(line)
+    
+    return "\n".join(lines)
+
 def calculate_exact_metrics(fixtures, team_id):
     """Calculează matematic cifrele pe care AI-ul are interzis să le schimbe."""
     if not fixtures:
@@ -1028,23 +1068,70 @@ def get_api_sports_data(sport: str, home_team: str, match_date: date) -> Dict:
         h_id = found["teams"]["home"]["id"]
         a_id = found["teams"]["away"]["id"]
         
-        data = {"basic_info": found, "season_stats": {"home": {}, "away": {}}, "h2h_history": []}
+        data = {"basic_info": found, "season_stats": {"home": {}, "away": {}}, "h2h_history": [], "standings": []}
 
-        if sport in ["football", "baseball"]:
-            league_id = found.get("league", {}).get("id")
-            if league_id:
-                s_res = requests.get(f"https://{host}/standings?league={league_id}&season={season}", headers=headers).json()
-                responses = s_res.get("response", [])
-                if responses:
-                    league_data = responses[0].get("league", {})
-                    standings_list = league_data.get("standings", [])
-                    if standings_list:
-                        actual_standings = standings_list[0]
-                        for entry in actual_standings:
-                            if entry.get("team", {}).get("id") == h_id: 
-                                data["season_stats"]["home"] = entry.get("all", entry.get("stats", {}))
-                            if entry.get("team", {}).get("id") == a_id: 
-                                data["season_stats"]["away"] = entry.get("all", entry.get("stats", {}))
+        # Fetch full league standings for all sports (except tennis)
+        if sport != "tennis":
+            try:
+                league_id = found.get("league", {}).get("id")
+                if league_id:
+                    s_res = requests.get(f"https://{host}/standings?league={league_id}&season={season}", headers=headers, timeout=10).json()
+                    responses = s_res.get("response", [])
+                    if responses:
+                        if sport in ("football", "baseball"):
+                            league_data = responses[0].get("league", {})
+                            standings_list = league_data.get("standings", [])
+                            if standings_list:
+                                raw_standings = standings_list[0]
+                                for entry in raw_standings:
+                                    team_name = entry.get("team", {}).get("name", "?")
+                                    team_tid = entry.get("team", {}).get("id")
+                                    rank = entry.get("rank", "?")
+                                    pts = entry.get("points", "?")
+                                    all_stats = entry.get("all", {})
+                                    played = all_stats.get("played", all_stats.get("matchs", {}).get("played", "?"))
+                                    win = all_stats.get("win", all_stats.get("matchs", {}).get("win", "?"))
+                                    draw = all_stats.get("draw", all_stats.get("matchs", {}).get("draw", "?"))
+                                    lose = all_stats.get("lose", all_stats.get("matchs", {}).get("lose", "?"))
+                                    gf = all_stats.get("goals", {}).get("for", "?")
+                                    ga = all_stats.get("goals", {}).get("against", "?")
+                                    data["standings"].append({
+                                        "rank": rank, "team": team_name, "points": pts,
+                                        "played": played, "w": win, "d": draw, "l": lose,
+                                        "gf": gf, "ga": ga
+                                    })
+                                    if team_tid == h_id:
+                                        data["season_stats"]["home"] = all_stats
+                                    if team_tid == a_id:
+                                        data["season_stats"]["away"] = all_stats
+                        else:
+                            # Basketball & Hockey: different response structure
+                            for group in responses:
+                                entries = group if isinstance(group, list) else group.get("league", {}).get("standings", [[]])[0] if isinstance(group, dict) else []
+                                if isinstance(group, dict) and not isinstance(entries, list):
+                                    # Try flat structure: response is list of standing entries
+                                    entries = [group]
+                                for entry in (entries if isinstance(entries, list) else []):
+                                    team_info = entry.get("team", {})
+                                    team_name = team_info.get("name", "?")
+                                    team_tid = team_info.get("id")
+                                    pos = entry.get("position", entry.get("rank", "?"))
+                                    win = entry.get("games", {}).get("win", {}).get("total", entry.get("win", {}).get("total", "?"))
+                                    lose = entry.get("games", {}).get("lose", {}).get("total", entry.get("lose", {}).get("total", "?"))
+                                    pts_for = entry.get("points", {}).get("for", "?")
+                                    pts_against = entry.get("points", {}).get("against", "?")
+                                    data["standings"].append({
+                                        "rank": pos, "team": team_name,
+                                        "w": win, "l": lose,
+                                        "pf": pts_for, "pa": pts_against
+                                    })
+                                    if team_tid == h_id:
+                                        data["season_stats"]["home"] = entry
+                                    if team_tid == a_id:
+                                        data["season_stats"]["away"] = entry
+            except Exception as e:
+                logger.error(f"Standings fetch failed for {sport}: {e}")
+
         inj_path = "injuries" if sport == "football" else "injuries"
         game_param = "fixture" if sport == "football" else "game"
         
@@ -1053,7 +1140,27 @@ def get_api_sports_data(sport: str, home_team: str, match_date: date) -> Dict:
 
         h2h_res = requests.get(f"https://{host}/{path}/h2h?h2h={h_id}-{a_id}", headers=headers).json()
         data["h2h_history"] = h2h_res.get("response", [])[:10]
-            
+
+        # Fetch each team's ACTUAL last 10 fixtures (not just H2H) for real form
+        try:
+            if sport == "football":
+                r_home = requests.get(f"https://{host}/{path}?team={h_id}&last=10", headers=headers, timeout=10).json()
+                r_away = requests.get(f"https://{host}/{path}?team={a_id}&last=10", headers=headers, timeout=10).json()
+                data["recent_home"] = (r_home.get("response") or [])[:10]
+                data["recent_away"] = (r_away.get("response") or [])[:10]
+            else:
+                # Basketball, hockey, baseball: season endpoint returns games oldest-first,
+                # so reverse to get most recent 10
+                r_home = requests.get(f"https://{host}/{path}?team={h_id}&season={season}", headers=headers, timeout=10).json()
+                r_away = requests.get(f"https://{host}/{path}?team={a_id}&season={season}", headers=headers, timeout=10).json()
+                home_games = r_home.get("response") or []
+                away_games = r_away.get("response") or []
+                data["recent_home"] = list(reversed(home_games))[:10]
+                data["recent_away"] = list(reversed(away_games))[:10]
+        except Exception:
+            data["recent_home"] = []
+            data["recent_away"] = []
+
         return data
     except Exception as e:
         logger.error(f"Eroare date premium {sport}: {str(e)}")
@@ -1552,16 +1659,33 @@ async def analyze(
         
         home_id = premium_raw.get("basic_info", {}).get("teams", {}).get("home", {}).get("id")
         away_id = premium_raw.get("basic_info", {}).get("teams", {}).get("away", {}).get("id")
-        history = premium_raw.get("h2h_history", []) or []
 
-        forma_home = get_exact_stats(history, home_id, data.sport)
-        forma_away = get_exact_stats(history, away_id, data.sport)
+        # Use each team's ACTUAL recent fixtures for form (not H2H between them)
+        recent_home = premium_raw.get("recent_home", []) or []
+        recent_away = premium_raw.get("recent_away", []) or []
+
+        if recent_home:
+            forma_home = calculate_exact_metrics(recent_home, home_id)
+        else:
+            # Fallback: use H2H if recent fixtures unavailable
+            history = premium_raw.get("h2h_history", []) or []
+            forma_home = get_exact_stats(history, home_id, data.sport)
+
+        if recent_away:
+            forma_away = calculate_exact_metrics(recent_away, away_id)
+        else:
+            history = premium_raw.get("h2h_history", []) or []
+            forma_away = get_exact_stats(history, away_id, data.sport)
 
         intel_pool = {
             "forma_exacta_gazde": forma_home["string"],
             "forma_exacta_oaspeti": forma_away["string"],
             "detalii_premium": premium_raw
         }
+
+        # Build standings string from fetched data
+        standings_raw = premium_raw.get("standings", [])
+        standings_str = format_standings_for_prompt(standings_raw, data.home_team, data.away_team, data.sport)
 
         odds_str = _lookup_odds_from_db(data.sport, data.home_team, data.away_team)
 
@@ -1587,6 +1711,8 @@ SPORT: {data.sport}
 FORMĂ MATEMATICĂ (server-calculated, nu modifica):
 - {data.home_team}: {intel_pool['forma_exacta_gazde']}
 - {data.away_team}: {intel_pool['forma_exacta_oaspeti']}
+
+{standings_str}
 
 COTE LIVE:
 {odds_trimmed}
