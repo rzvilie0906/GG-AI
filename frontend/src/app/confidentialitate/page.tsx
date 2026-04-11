@@ -43,7 +43,6 @@ export default function ConfidentialitatePage() {
               <ul className="list-none space-y-1 mt-2">
                 <li><strong className="text-white">Denumire:</strong> RAILIE SRL</li>
                 <li><strong className="text-white">CUI:</strong> 54307609</li>
-                <li><strong className="text-white">Sediul social:</strong> Petrești, str. Mihai Viteazu, nr. 66, județ Alba, România</li>
                 <li><strong className="text-white">Email contact:</strong> contact@ggai.bet</li>
                 <li><strong className="text-white">Responsabil protecția datelor (DPO):</strong> contact@ggai.bet</li>
               </ul>
