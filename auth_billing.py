@@ -18,6 +18,11 @@ import sqlite3
 import logging
 import secrets
 import hashlib
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -1453,7 +1458,57 @@ async def create_support_ticket(request: Request, authorization: Optional[str] =
     conn.close()
 
     print(f"📩 [Support] New ticket from {email} (plan: {plan or 'none'}, priority: {priority})")
+
+    # ── Send email notification to owner ──────────────────────────────
+    try:
+        _send_support_email(email, message, plan, priority, attachment_path)
+    except Exception as exc:
+        print(f"⚠️ [Support] Email notification failed: {exc}")
+
     return {"status": "ok", "message": "Cererea a fost trimisă cu succes."}
+
+# ── Support Email Helper ──────────────────────────────────────────────────────
+
+def _send_support_email(user_email: str, message: str, plan: str | None, priority: int, attachment_path: str | None = None):
+    """Send support ticket details to contact@ggai.bet via Zoho SMTP."""
+    smtp_user = os.environ.get("ZOHO_SMTP_USER", "contact@ggai.bet")
+    smtp_pass = os.environ.get("ZOHO_SMTP_PASS", "")
+    if not smtp_pass:
+        print("⚠️ [Support] ZOHO_SMTP_PASS not set — skipping email notification.")
+        return
+
+    owner_email = "contact@ggai.bet"
+
+    msg = MIMEMultipart()
+    msg["From"] = smtp_user
+    msg["To"] = owner_email
+    msg["Subject"] = f"[Suport GG-AI] Cerere nouă de la {user_email}"
+
+    body = (
+        f"📩 Cerere nouă de suport\n"
+        f"{'─' * 40}\n"
+        f"Email:     {user_email}\n"
+        f"Plan:      {plan or 'none'}\n"
+        f"Prioritate: {priority}\n"
+        f"{'─' * 40}\n\n"
+        f"{message}\n"
+    )
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    if attachment_path and os.path.isfile(attachment_path):
+        with open(attachment_path, "rb") as f:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(attachment_path)}")
+        msg.attach(part)
+
+    with smtplib.SMTP("smtp.zoho.eu", 587) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+
+    print(f"✅ [Support] Email sent to {owner_email}")
 
 # ── Remember Me Endpoints ─────────────────────────────────────────────────────
 
