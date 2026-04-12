@@ -19,6 +19,7 @@ import logging
 import secrets
 import hashlib
 import smtplib
+import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -1459,11 +1460,12 @@ async def create_support_ticket(request: Request, authorization: Optional[str] =
 
     print(f"📩 [Support] New ticket from {email} (plan: {plan or 'none'}, priority: {priority})")
 
-    # ── Send email notification to owner ──────────────────────────────
-    try:
-        _send_support_email(email, message, plan, priority, attachment_path)
-    except Exception as exc:
-        print(f"⚠️ [Support] Email notification failed: {exc}")
+    # ── Send email notification to owner (background, non-blocking) ───
+    threading.Thread(
+        target=_send_support_email,
+        args=(email, message, plan, priority, attachment_path),
+        daemon=True,
+    ).start()
 
     return {"status": "ok", "message": "Cererea a fost trimisă cu succes."}
 
@@ -1503,10 +1505,14 @@ def _send_support_email(user_email: str, message: str, plan: str | None, priorit
         part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(attachment_path)}")
         msg.attach(part)
 
-    with smtplib.SMTP("smtp.zoho.eu", 587) as server:
-        server.starttls()
-        server.login(smtp_user, smtp_pass)
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP("smtp.zoho.eu", 587, timeout=15) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        print(f"✅ [Support] Email sent to {owner_email}")
+    except Exception as exc:
+        print(f"⚠️ [Support] Email send failed: {exc}")
 
     print(f"✅ [Support] Email sent to {owner_email}")
 
