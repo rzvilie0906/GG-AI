@@ -1458,6 +1458,25 @@ async def create_support_ticket(request: Request, authorization: Optional[str] =
     conn.commit()
     conn.close()
 
+    # ── Save to Firestore (visible in Firebase Console immediately) ───
+    try:
+        from firebase_admin import firestore as _fs
+        _db = _fs.client()
+        ticket_data = {
+            "uid": uid,
+            "email": email,
+            "plan": plan,
+            "priority": priority,
+            "message": message,
+            "has_attachment": bool(attachment_path),
+            "status": "open",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _db.collection("support_tickets").add(ticket_data)
+        print(f"✅ [Support] Ticket saved to Firestore")
+    except Exception as exc:
+        print(f"⚠️ [Support] Firestore save failed: {exc}")
+
     print(f"📩 [Support] New ticket from {email} (plan: {plan or 'none'}, priority: {priority})")
 
     # ── Send email notification to owner (background, non-blocking) ───
@@ -1472,18 +1491,17 @@ async def create_support_ticket(request: Request, authorization: Optional[str] =
 # ── Support Email Helper ──────────────────────────────────────────────────────
 
 def _send_support_email(user_email: str, message: str, plan: str | None, priority: int, attachment_path: str | None = None):
-    """Send support ticket details to contact@ggai.bet via Zoho SMTP."""
+    """Send support ticket details via Zoho SMTP."""
     smtp_user = os.environ.get("ZOHO_SMTP_USER", "contact@ggai.bet")
     smtp_pass = os.environ.get("ZOHO_SMTP_PASS", "")
+    notify_email = os.environ.get("SUPPORT_NOTIFY_EMAIL", "contact@ggai.bet")
     if not smtp_pass:
         print("⚠️ [Support] ZOHO_SMTP_PASS not set — skipping email notification.")
         return
 
-    owner_email = "contact@ggai.bet"
-
     msg = MIMEMultipart()
     msg["From"] = f"GG-AI Suport <{smtp_user}>"
-    msg["To"] = owner_email
+    msg["To"] = notify_email
     msg["Reply-To"] = user_email
     msg["Subject"] = f"[Suport GG-AI] Cerere nouă de la {user_email}"
 
@@ -1510,11 +1528,9 @@ def _send_support_email(user_email: str, message: str, plan: str | None, priorit
         with smtplib.SMTP_SSL("smtp.zoho.eu", 465, timeout=15) as server:
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
-        print(f"✅ [Support] Email sent to {owner_email}")
+        print(f"✅ [Support] Email sent to {notify_email}")
     except Exception as exc:
         print(f"⚠️ [Support] Email send failed: {exc}")
-
-    print(f"✅ [Support] Email sent to {owner_email}")
 
 # ── Remember Me Endpoints ─────────────────────────────────────────────────────
 
