@@ -1482,8 +1482,9 @@ def _send_support_email(user_email: str, message: str, plan: str | None, priorit
     owner_email = "contact@ggai.bet"
 
     msg = MIMEMultipart()
-    msg["From"] = smtp_user
+    msg["From"] = f"GG-AI Suport <{smtp_user}>"
     msg["To"] = owner_email
+    msg["Reply-To"] = user_email
     msg["Subject"] = f"[Suport GG-AI] Cerere nouă de la {user_email}"
 
     body = (
@@ -1506,8 +1507,7 @@ def _send_support_email(user_email: str, message: str, plan: str | None, priorit
         msg.attach(part)
 
     try:
-        with smtplib.SMTP("smtp.zoho.eu", 587, timeout=15) as server:
-            server.starttls()
+        with smtplib.SMTP_SSL("smtp.zoho.eu", 465, timeout=15) as server:
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
         print(f"✅ [Support] Email sent to {owner_email}")
