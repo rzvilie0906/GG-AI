@@ -188,6 +188,7 @@ function PricingContent() {
         "Prioritate maximă la procesare",
         "Urmărire avansată a cotelor",
         "Suport prioritar 24/7",
+        "Acces la grupul de Telegram",
       ],
     },
   ];

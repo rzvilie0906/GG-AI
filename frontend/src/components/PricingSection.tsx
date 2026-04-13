@@ -105,6 +105,7 @@ export default function PricingSection({ isLoggedIn, isActive }: PricingSectionP
                 <li><span className="lp-check lp-check-diamond">💎</span> Prioritate maximă la procesare</li>
                 <li><span className="lp-check lp-check-diamond">💎</span> Urmărire avansată a cotelor</li>
                 <li><span className="lp-check lp-check-diamond">💎</span> Suport prioritar 24/7</li>
+                <li><span className="lp-check lp-check-diamond">💎</span> Acces la grupul de Telegram</li>
                 <li><span className="lp-check lp-check-diamond">💎</span> Anulezi oricând — fără obligații</li>
               </ul>
             </div>
