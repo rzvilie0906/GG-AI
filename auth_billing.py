@@ -20,6 +20,7 @@ import secrets
 import hashlib
 import smtplib
 import threading
+import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -1491,44 +1492,55 @@ async def create_support_ticket(request: Request, authorization: Optional[str] =
 # ── Support Email Helper ──────────────────────────────────────────────────────
 
 def _send_support_email(user_email: str, message: str, plan: str | None, priority: int, attachment_path: str | None = None):
-    """Send support ticket details via Zoho SMTP."""
-    smtp_user = os.environ.get("ZOHO_SMTP_USER", "contact@ggai.bet")
-    smtp_pass = os.environ.get("ZOHO_SMTP_PASS", "")
-    notify_email = os.environ.get("SUPPORT_NOTIFY_EMAIL", "contact@ggai.bet")
-    if not smtp_pass:
-        print("⚠️ [Support] ZOHO_SMTP_PASS not set — skipping email notification.")
+    """Send support ticket details to contact@ggai.bet via Resend HTTP API."""
+    import httpx
+
+    resend_api_key = os.environ.get("RESEND_API_KEY", "")
+    if not resend_api_key:
+        print("⚠️ [Support] RESEND_API_KEY not set — skipping email notification.")
         return
 
-    msg = MIMEMultipart()
-    msg["From"] = f"GG-AI Suport <{smtp_user}>"
-    msg["To"] = notify_email
-    msg["Reply-To"] = user_email
-    msg["Subject"] = f"[Suport GG-AI] Cerere nouă de la {user_email}"
-
-    body = (
+    body_text = (
         f"📩 Cerere nouă de suport\n"
         f"{'─' * 40}\n"
-        f"Email:     {user_email}\n"
-        f"Plan:      {plan or 'none'}\n"
-        f"Prioritate: {priority}\n"
+        f"Email client: {user_email}\n"
+        f"Plan:         {plan or 'none'}\n"
+        f"Prioritate:   {priority}\n"
         f"{'─' * 40}\n\n"
         f"{message}\n"
     )
-    msg.attach(MIMEText(body, "plain", "utf-8"))
 
+    payload: dict = {
+        "from": "GG-AI Suport <suport@ggai.bet>",
+        "to": ["contact@ggai.bet"],
+        "reply_to": user_email,
+        "subject": f"[Suport GG-AI] Cerere nouă de la {user_email}",
+        "text": body_text,
+    }
+
+    # Attach file if present
     if attachment_path and os.path.isfile(attachment_path):
         with open(attachment_path, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(attachment_path)}")
-        msg.attach(part)
+            file_content = base64.b64encode(f.read()).decode("utf-8")
+        payload["attachments"] = [{
+            "filename": os.path.basename(attachment_path),
+            "content": file_content,
+        }]
 
     try:
-        with smtplib.SMTP_SSL("smtp.zoho.eu", 465, timeout=15) as server:
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-        print(f"✅ [Support] Email sent to {notify_email}")
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=15,
+        )
+        if resp.status_code in (200, 201):
+            print(f"✅ [Support] Email sent to contact@ggai.bet via Resend")
+        else:
+            print(f"⚠️ [Support] Resend API error {resp.status_code}: {resp.text}")
     except Exception as exc:
         print(f"⚠️ [Support] Email send failed: {exc}")
 
