@@ -87,6 +87,8 @@ def _lookup_real_odd(sport: str, home_team: str, away_team: str,
             api_market = "btts"
         elif any(k in mkt_lower for k in ("handicap", "spread")):
             api_market = "spreads"
+        elif any(k in mkt_lower for k in ("double chance", "dubla", "dublă", "sansa dubla", "șansă dublă")):
+            api_market = "double_chance"
         else:
             api_market = "h2h"  # default fallback
 
@@ -158,6 +160,11 @@ def _lookup_real_odd(sport: str, home_team: str, away_team: str,
                         pk = max(pick_parts, key=len) if pick_parts else pick_kw
                         matched = pk in _strip_accents(name).lower()
 
+                    elif api_market == "double_chance":
+                        # Match "1X", "X2", "12" outcome names
+                        pick_norm = pick_lower.replace(" ", "")
+                        matched = name.lower().replace(" ", "") == pick_norm
+
                     if matched:
                         return round(price, 2)
 
@@ -205,6 +212,7 @@ _OPPOSITE_SIDES = {
     "x": set(),
     "1x": {"2"},
     "x2": {"1"},
+    "12": {"x"},
     # Over/Under family (normalized)
     "peste": {"sub"},
     "sub": {"peste"},

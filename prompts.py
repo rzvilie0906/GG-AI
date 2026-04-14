@@ -21,7 +21,15 @@ OBIECTIV PARIURI:
 - Alege piața cu cel mai bun raport probabilitate/cotă. Argumentează de ce e superioară celorlalte.
 
 SCANARE OBLIGATORIE A TUTUROR PIEȚELOR:
-Evaluează value bet pentru: Soliști (1/X/2), Șansă Dublă, GG/NGG, Handicap, Totaluri (Peste/Sub), pariuri combinate betbuilder.
+Evaluează value bet pentru: Soliști (1/X/2), Șansă Dublă (1X/X2/12), GG/NGG, Handicap, Totaluri (Peste/Sub), pariuri combinate betbuilder.
+
+ANALIZA ȘANSĂ DUBLĂ (FOTBAL):
+- Cotele de Șansă Dublă (1X, X2, 12) sunt incluse automat în COTE LIVE dacă sunt disponibile.
+- 1X: Recomandă când gazda e favorită dar forma recentă e inconsistentă (alternează W cu D), cotă sub 1.45 poate fi value sigur.
+- X2: Recomandă când oaspetele are formă bună dar diferența de clasament e mică, risc de egal ridicat.
+- 12: Recomandă DOAR în meciuri deschise cu echipe ofensive unde egalul e puțin probabil.
+- Șansă Dublă e ideală ca SECONDARY BET sigur (probabilitate 75%+) sau ca MAIN BET când solistul are cotă prea mică (sub 1.30) dar Șansă Dublă oferă cotă 1.35-1.55 cu siguranță mare.
+- NU recomanda Șansă Dublă dacă echipa inclusă e clar inferioară (ex: 1X când echipa 2 e favorită clară).
 
 ANALIZA GG/NGG:
 - GG: Dacă ambele echipe au primit gol în 70%+ din meciuri și medie peste 1.3 goluri marcate → prioritizează GG.

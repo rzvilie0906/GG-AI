@@ -156,6 +156,7 @@ _MARKET_LABELS = {
     "totals": "Total Goluri",
     "spreads": "Handicap",
     "btts": "Ambele Marchează (GG/NGG)",
+    "double_chance": "Șansă Dublă",
 }
 
 def _build_real_odds_section(odds_str: str) -> list:
@@ -187,7 +188,7 @@ def _build_real_odds_section(odds_str: str) -> list:
                     picks_data[key].append({"bookmaker": bookie_name, "odds": round(price, 2)})
 
         # Build section3_odds entries grouped by market, sorted by market importance
-        market_order = ["h2h", "totals", "spreads", "btts"]
+        market_order = ["h2h", "double_chance", "totals", "spreads", "btts"]
         section = []
         seen_markets = set()
 

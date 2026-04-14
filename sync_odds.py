@@ -84,6 +84,89 @@ DAILY_CREDIT_BUDGET = 120
 MAX_TENNIS_TOURNAMENTS = 3
 BTTS_CREDIT_BUDGET = 40  # max credits to spend on btts (1cr per event)
 
+def _inject_double_chance(conn):
+    """
+    Calculate double chance odds from h2h (1X2) data for soccer matches.
+    ZERO additional API credits — derived mathematically from existing h2h prices.
+    DC formula: 1X = 1/(1/Home + 1/Draw), X2 = 1/(1/Draw + 1/Away), 12 = 1/(1/Home + 1/Away)
+    """
+    cur = conn.cursor()
+    rows = cur.execute(
+        "SELECT id, bookmakers_json FROM match_odds WHERE sport_key LIKE 'soccer_%'"
+    ).fetchall()
+
+    enriched = 0
+    for row_id, bk_json in rows:
+        try:
+            bookmakers = json.loads(bk_json)
+            if not isinstance(bookmakers, list):
+                continue
+
+            modified = False
+            for bookie in bookmakers:
+                markets = bookie.get("markets", [])
+                # Skip if already has double_chance
+                if any(m.get("key") == "double_chance" for m in markets):
+                    continue
+
+                # Find h2h market with exactly 3 outcomes (Home, Draw, Away)
+                h2h_market = None
+                for m in markets:
+                    if m.get("key") == "h2h" and len(m.get("outcomes", [])) == 3:
+                        h2h_market = m
+                        break
+
+                if not h2h_market:
+                    continue
+
+                # Extract prices by matching "Draw" outcome
+                home_price = draw_price = away_price = None
+                home_name = away_name = None
+                for o in h2h_market["outcomes"]:
+                    name = o.get("name", "").strip()
+                    price = o.get("price")
+                    if not isinstance(price, (int, float)) or price <= 1.0:
+                        continue
+                    if name.lower() == "draw":
+                        draw_price = price
+                    elif home_name is None:
+                        home_name = name
+                        home_price = price
+                    else:
+                        away_name = name
+                        away_price = price
+
+                if not all([home_price, draw_price, away_price]):
+                    continue
+
+                # Calculate double chance odds
+                dc_1x = round(1 / (1 / home_price + 1 / draw_price), 2)
+                dc_x2 = round(1 / (1 / draw_price + 1 / away_price), 2)
+                dc_12 = round(1 / (1 / home_price + 1 / away_price), 2)
+
+                dc_market = {
+                    "key": "double_chance",
+                    "outcomes": [
+                        {"name": "1X", "price": dc_1x},
+                        {"name": "X2", "price": dc_x2},
+                        {"name": "12", "price": dc_12},
+                    ],
+                }
+                markets.append(dc_market)
+                modified = True
+
+            if modified:
+                cur.execute(
+                    "UPDATE match_odds SET bookmakers_json = ? WHERE id = ?",
+                    (json.dumps(bookmakers), row_id),
+                )
+                enriched += 1
+        except Exception as e:
+            print(f"   ⚠️ Double chance calc error for row {row_id}: {e}")
+
+    print(f"   🎯 Șansă Dublă calculată pentru {enriched} meciuri de fotbal (0 credite API)")
+
+
 def sync_odds():
     if not API_KEYS:
         print("❌ EROARE: Nu ai pus ODDS_API_KEYS în fișierul .env (sau formatul e greșit)!")
@@ -364,6 +447,9 @@ def sync_odds():
             if current_key_index >= len(API_KEYS):
                 print("❌ ATENȚIE: Am epuizat complet creditele! Opresc scanarea restului de turnee de tenis.")
                 break
+
+    # ── Double Chance: derive from h2h for soccer (ZERO API cost) ──
+    _inject_double_chance(conn)
 
     conn.commit()
     conn.close()
