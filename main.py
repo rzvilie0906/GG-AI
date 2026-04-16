@@ -1720,12 +1720,14 @@ COTE LIVE:
 
 DATE STATISTICE (din API extern — folosește mediile de goluri ca referință principală, ignoră sfatul modelului extern dacă contrazice cifrele):
 {live_intel}
+
+INSTRUCȚIUNE CRITICĂ: Fii ONEST cu model_probability. Dacă datele nu susțin clar un pariu sigur, dă probabilitate scăzută (sub 60%). E mai bine să fii conservator și corect decât optimist și greșit. Caută pariuri pe care ești CONVINS că le câștigi.
 {f"Note utilizator: {data.extra_context}" if data.extra_context else ""}
 Returnează DOAR JSON valid conform schemei din system prompt."""
         try:
             response = client.chat.completions.create(
                 model=MODEL,
-                temperature=0,
+                temperature=0.15,
                 max_tokens=1200,
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_input}],
             )

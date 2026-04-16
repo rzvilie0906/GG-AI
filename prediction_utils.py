@@ -396,19 +396,22 @@ def build_ticket_from_analyses(
     Build a ticket deterministically by selecting the best main_bets from cached analyses.
     No LLM call — purely data-driven selection from the canonical predictions.
     Uses real bookmaker odds instead of AI fair_odds.
-    Pick count is flexible: targets 3 picks, can shrink to 2 if combined probability
-    is very high, or expand to 4 if individual probabilities are lower but still valuable.
 
-    Args:
-        matches: List of match dicts with sport, home_team, away_team, league_name
-        analyses: Dict mapping match_key to saved analysis JSON
-        max_picks: Maximum picks to include
-        min_picks: Minimum picks required
-        mixed: If True, enforce sport diversity (max 2 per sport)
+    STRATEGY: Prioritize HIGH-CONFIDENCE picks with GOOD ODDS.
+    - Only include picks the AI is genuinely confident about (≥ 65% probability)
+    - Require real bookmaker odds ≥ 1.40 (no trash odds) and ≤ 3.00 (no longshots)
+    - Rank by composite score: confidence + value + odds sweet-spot bonus
+    - Target 3 picks with total odds ≈ 3.5–7.0 (decent payout)
+    - Sweet spot: individual odds 1.50–2.20 with probability 65–80%
 
-    Returns:
-        List of ticket pick dicts, or empty list if insufficient quality picks.
+    Also considers secondary bets when they have very high confidence (≥ 75%)
+    and the main bet doesn't qualify.
     """
+    MIN_PROBABILITY = 65       # Confident picks (allows more candidates with better odds)
+    MIN_ODDS = 1.40            # No trash odds — tickets need decent total odds
+    MAX_ODDS = 3.00            # No risky longshots
+    SECONDARY_MIN_PROB = 75    # Secondary bets need higher confidence
+
     candidates = []
 
     for m in matches:
@@ -435,54 +438,54 @@ def build_ticket_from_analyses(
             continue
 
         canonical = extract_canonical_prediction(analysis)
-        prob = canonical["main_probability"]
-        if isinstance(prob, str):
-            try:
-                prob = float(prob)
-            except ValueError:
-                continue
 
-        # Filter: only include picks with probability >= 55% and fair_odds in valid range
-        if prob < 55:
-            continue
-
-        fair_odds = canonical["main_fair_odds"]
-        if isinstance(fair_odds, str):
-            try:
-                fair_odds = float(fair_odds)
-            except ValueError:
-                fair_odds = 0
-
-        # Skip if fair_odds below 1.20 (too safe / no value)
-        if fair_odds > 0 and fair_odds < 1.20:
-            continue
-
-        # Look up real bookmaker odds for this pick
-        real_odd = _lookup_real_odd(
-            sport, home, away,
-            canonical["main_market"], canonical["main_pick"]
+        # Try main bet first
+        candidate = _evaluate_bet_candidate(
+            canonical["main_market"], canonical["main_pick"],
+            canonical["main_probability"], canonical["main_fair_odds"],
+            canonical["main_reasoning"],
+            sport, home, away, league, MIN_PROBABILITY, MIN_ODDS, MAX_ODDS
         )
-        if real_odd:
-            display_odds = str(real_odd)
-        elif fair_odds > 0:
-            display_odds = str(round(fair_odds, 2))
+        if candidate:
+            candidates.append(candidate)
+            continue
+
+        # If main bet didn't qualify, check secondary bets for very-high-confidence picks
+        for sb in canonical.get("secondary_bets", []):
+            candidate = _evaluate_bet_candidate(
+                sb["market"], sb["pick"],
+                sb["probability"], sb["fair_odds"],
+                [],
+                sport, home, away, league, SECONDARY_MIN_PROB, MIN_ODDS, MAX_ODDS
+            )
+            if candidate:
+                candidates.append(candidate)
+                break  # Only take one secondary per match
+
+    # Rank by composite score: confidence + value + odds sweet-spot bonus
+    # Favors picks in the 1.50-2.20 odds range (good payout AND safe)
+    for c in candidates:
+        prob = c["probability"]
+        odds_val = float(c["odds"]) if c["odds"] != "N/A" else c.get("_fair_odds", 1.5)
+        value = (prob / 100.0) * odds_val - 1.0  # Expected value
+
+        # Normalize: prob in [65-100] → [0,1], value in [0, 0.5] → [0,1]
+        norm_prob = min((prob - 60) / 35.0, 1.0)
+        norm_value = min(max(value, 0) / 0.4, 1.0)
+
+        # Odds sweet-spot bonus: peaks at 1.70-1.80, tapers to 0 at 1.40 and 3.00
+        if 1.50 <= odds_val <= 2.20:
+            odds_bonus = 1.0  # Perfect range
+        elif 1.40 <= odds_val < 1.50:
+            odds_bonus = (odds_val - 1.40) / 0.10 * 0.7  # Ramp up
+        elif 2.20 < odds_val <= 3.00:
+            odds_bonus = max(0, 1.0 - (odds_val - 2.20) / 0.80) * 0.6  # Taper down
         else:
-            display_odds = "N/A"
+            odds_bonus = 0.0
 
-        candidates.append({
-            "match": f"{home} vs {away}",
-            "league": league,
-            "market": canonical["main_market"],
-            "pick": canonical["main_pick"],
-            "odds": display_odds,
-            "reasoning": "; ".join(canonical["main_reasoning"][:2]) if canonical["main_reasoning"] else "",
-            "probability": prob,
-            "sport": sport,
-            "_source": "canonical_analysis",
-        })
+        c["_score"] = 0.45 * norm_prob + 0.25 * norm_value + 0.30 * odds_bonus
 
-    # Sort by probability descending (safest picks first)
-    candidates.sort(key=lambda c: c["probability"], reverse=True)
+    candidates.sort(key=lambda c: c["_score"], reverse=True)
 
     # If mixed, enforce sport diversity
     if mixed:
@@ -504,30 +507,103 @@ def build_ticket_from_analyses(
         return []
 
     # ── Dynamic pick count: target 3, flex between 2 and 4 ──
-    # If top picks have very high probability (avg ≥ 70%), 2 picks suffice.
-    # If probabilities are moderate (avg 55-65%), include up to 4 for value.
-    # Default target is 3 picks.
     if len(candidates) > 3:
         avg_prob = sum(c["probability"] for c in candidates[:3]) / 3
-        if avg_prob >= 70:
-            # Very confident — keep 2-3 picks (lower total odds, higher win chance)
+        if avg_prob >= 78:
+            # Very confident top 3 — keep 3 (strong ticket)
             candidates = candidates[:3]
-        elif avg_prob < 62:
-            # Moderate confidence — include 4th pick for more value
-            candidates = candidates[:4]
+        elif avg_prob >= 72:
+            # Solid confidence — 3 picks is the sweet spot
+            candidates = candidates[:3]
         else:
-            # Normal — 3 picks is the sweet spot
-            candidates = candidates[:3]
-    # If exactly 3 candidates with very high avg prob, trim to 2
-    if len(candidates) == 3:
-        avg_prob = sum(c["probability"] for c in candidates) / 3
-        if avg_prob >= 75:
-            candidates = candidates[:2]
+            # Good but not great — include 4th if it has high prob
+            if candidates[3]["probability"] >= 70:
+                candidates = candidates[:4]
+            else:
+                candidates = candidates[:3]
+
+    # Ensure total odds are decent (≥ 2.80) — no point in a ticket with 3× 1.40 picks
+    total_odds = 1.0
+    for c in candidates:
+        try:
+            total_odds *= float(c["odds"])
+        except (ValueError, TypeError):
+            pass
+    # If total odds are too low, drop the lowest-odds pick and keep the rest
+    if total_odds < 2.80 and len(candidates) > min_picks:
+        candidates.sort(key=lambda x: float(x.get("odds", "1") if x.get("odds") != "N/A" else "1"))
+        candidates.pop(0)  # Remove lowest odds pick
+        candidates.sort(key=lambda x: x.get("_score", 0), reverse=True)  # Re-sort by score
+
+    # Final safety check: ensure total implied probability is reasonable
+    # (combined win probability should be ≥ 20% for the ticket)
+    combined_prob = 1.0
+    for c in candidates:
+        combined_prob *= (c["probability"] / 100.0)
+    if combined_prob < 0.20 and len(candidates) > 2:
+        # Drop weakest pick to improve combined probability
+        candidates = candidates[:len(candidates) - 1]
 
     # Clean up internal fields before returning
     for c in candidates:
         c.pop("probability", None)
         c.pop("sport", None)
         c.pop("_source", None)
+        c.pop("_score", None)
+        c.pop("_fair_odds", None)
 
     return candidates
+
+
+def _evaluate_bet_candidate(
+    market: str, pick: str, prob, fair_odds,
+    reasoning: list,
+    sport: str, home: str, away: str, league: str,
+    min_probability: float, min_odds: float, max_odds: float,
+) -> dict | None:
+    """Evaluate a single bet (main or secondary) and return a candidate dict or None."""
+    if isinstance(prob, str):
+        try:
+            prob = float(prob)
+        except ValueError:
+            return None
+    if prob < min_probability:
+        return None
+
+    if isinstance(fair_odds, str):
+        try:
+            fair_odds = float(fair_odds)
+        except ValueError:
+            fair_odds = 0
+
+    # Look up real bookmaker odds
+    real_odd = _lookup_real_odd(sport, home, away, market, pick)
+
+    if real_odd:
+        # Enforce odds range on real odds
+        if real_odd < min_odds or real_odd > max_odds:
+            return None
+        display_odds = str(real_odd)
+        # Value check: real odds should be ≥ fair odds (positive expected value)
+        if fair_odds > 0 and real_odd < fair_odds * 0.92:
+            # Real odds significantly below fair odds = negative value, skip
+            return None
+    elif fair_odds > 0:
+        if fair_odds < min_odds or fair_odds > max_odds:
+            return None
+        display_odds = str(round(fair_odds, 2))
+    else:
+        return None  # No odds at all = can't include in ticket
+
+    return {
+        "match": f"{home} vs {away}",
+        "league": league,
+        "market": market,
+        "pick": pick,
+        "odds": display_odds,
+        "reasoning": "; ".join(reasoning[:2]) if reasoning else "",
+        "probability": prob,
+        "sport": sport,
+        "_fair_odds": fair_odds,
+        "_source": "canonical_analysis",
+    }

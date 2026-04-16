@@ -173,12 +173,14 @@ async def generate_all_tickets():
             save_empty(cat_name, today_display, "Niciun meci disponibil pentru această categorie.")
             continue
 
-        print(f"[INFO] Găsite {len(matches)} meciuri pentru {cat_name}. Analizez premium primele {min(len(matches), 10)}...")
+        # Analyze more matches to have a bigger pool of candidates for high-confidence picks
+        analyze_count = min(len(matches), 15)
+        print(f"[INFO] Găsite {len(matches)} meciuri pentru {cat_name}. Analizez premium primele {analyze_count}...")
         print(f"[DEBUG] Primele 3 meciuri: {[(m['home_team'], m['away_team'], m['start_time_utc']) for m in matches[:3]]}")
 
         analyze_ok = 0
         analyze_fail = 0
-        for m in matches[:10]: 
+        for m in matches[:analyze_count]: 
             try:
                 print(f"  [ANALYZE] {m['home_team']} vs {m['away_team']} ({m['sport']})...")
                 await analyze(AnalyzeRequest(
@@ -195,7 +197,7 @@ async def generate_all_tickets():
                 analyze_fail += 1
                 print(f"  [FAIL] ❌ {m['home_team']} vs {m['away_team']}: {type(ae).__name__}: {ae}")
                 continue
-        print(f"[INFO] Analize reușite: {analyze_ok}/{min(len(matches), 10)} pentru {cat_name} (eșuate: {analyze_fail})")
+        print(f"[INFO] Analize reușite: {analyze_ok}/{analyze_count} pentru {cat_name} (eșuate: {analyze_fail})")
         
         # Pauză între faza de analiză și generarea biletului pentru a evita rate limits
         if analyze_ok > 0:

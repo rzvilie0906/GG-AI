@@ -33,6 +33,7 @@ jobs:
         run: |
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
           echo "APP_API_KEY=${{ secrets.APP_API_KEY }}" >> $GITHUB_ENV
+          echo "API_SPORTS_KEY=${{ secrets.API_SPORTS_KEY }}" >> $GITHUB_ENV
       - name: Write Firebase service account
         run: |
           if [ -z "$FIREBASE_SA" ]; then
@@ -56,9 +57,15 @@ jobs:
           import sqlite3
           conn = sqlite3.connect('sports.db')
           count = conn.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+          odds_count = conn.execute('SELECT COUNT(*) FROM match_odds').fetchone()[0]
           print(f'Events in DB: {count}')
+          print(f'Odds in DB: {odds_count}')
           if count == 0:
               print('::warning::No events in sports.db - tickets will be empty')
+          if odds_count == 0:
+              print('::warning::No odds in sports.db - AI analyses may lack real bookmaker odds')
+          conn.close()
+          "
           conn.close()
           "
       - name: Run generate_ticket.py
