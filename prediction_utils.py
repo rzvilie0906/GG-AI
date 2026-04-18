@@ -398,19 +398,19 @@ def build_ticket_from_analyses(
     Uses real bookmaker odds instead of AI fair_odds.
 
     STRATEGY: Prioritize HIGH-CONFIDENCE picks with GOOD ODDS.
-    - Only include picks the AI is genuinely confident about (≥ 65% probability)
-    - Require real bookmaker odds ≥ 1.40 (no trash odds) and ≤ 3.00 (no longshots)
+    - Only include picks the AI is genuinely confident about (≥ 58% probability)
+    - Require real bookmaker odds ≥ 1.20 (allows strong favorites) and ≤ 3.00 (no longshots)
     - Rank by composite score: confidence + value + odds sweet-spot bonus
-    - Target 3 picks with total odds ≈ 3.5–7.0 (decent payout)
-    - Sweet spot: individual odds 1.50–2.20 with probability 65–80%
+    - Target 3 picks with total odds ≈ 3.0–7.0 (decent payout)
+    - Sweet spot: individual odds 1.50–2.20 with probability 60–80%
 
-    Also considers secondary bets when they have very high confidence (≥ 75%)
+    Also considers secondary bets when they have good confidence (≥ 65%)
     and the main bet doesn't qualify.
     """
-    MIN_PROBABILITY = 65       # Confident picks (allows more candidates with better odds)
-    MIN_ODDS = 1.40            # No trash odds — tickets need decent total odds
+    MIN_PROBABILITY = 58       # Confident picks (covers basketball/hockey typical ranges)
+    MIN_ODDS = 1.20            # Allows strong favorites common in NBA/NHL
     MAX_ODDS = 3.00            # No risky longshots
-    SECONDARY_MIN_PROB = 75    # Secondary bets need higher confidence
+    SECONDARY_MIN_PROB = 65    # Secondary bets need solid confidence
 
     candidates = []
 
@@ -469,15 +469,17 @@ def build_ticket_from_analyses(
         odds_val = float(c["odds"]) if c["odds"] != "N/A" else c.get("_fair_odds", 1.5)
         value = (prob / 100.0) * odds_val - 1.0  # Expected value
 
-        # Normalize: prob in [65-100] → [0,1], value in [0, 0.5] → [0,1]
-        norm_prob = min((prob - 60) / 35.0, 1.0)
+        # Normalize: prob in [58-100] → [0,1], value in [0, 0.5] → [0,1]
+        norm_prob = min((prob - 55) / 40.0, 1.0)
         norm_value = min(max(value, 0) / 0.4, 1.0)
 
-        # Odds sweet-spot bonus: peaks at 1.70-1.80, tapers to 0 at 1.40 and 3.00
+        # Odds sweet-spot bonus: peaks at 1.50-2.20, tapers at edges
         if 1.50 <= odds_val <= 2.20:
             odds_bonus = 1.0  # Perfect range
-        elif 1.40 <= odds_val < 1.50:
-            odds_bonus = (odds_val - 1.40) / 0.10 * 0.7  # Ramp up
+        elif 1.30 <= odds_val < 1.50:
+            odds_bonus = (odds_val - 1.20) / 0.30 * 0.7  # Ramp up from 1.20
+        elif 1.20 <= odds_val < 1.30:
+            odds_bonus = 0.3  # Low but acceptable for strong favorites
         elif 2.20 < odds_val <= 3.00:
             odds_bonus = max(0, 1.0 - (odds_val - 2.20) / 0.80) * 0.6  # Taper down
         else:
@@ -522,7 +524,7 @@ def build_ticket_from_analyses(
             else:
                 candidates = candidates[:3]
 
-    # Ensure total odds are decent (≥ 2.80) — no point in a ticket with 3× 1.40 picks
+    # Ensure total odds are decent (≥ 2.20) — no point in a ticket with all very low odds picks
     total_odds = 1.0
     for c in candidates:
         try:
@@ -530,7 +532,7 @@ def build_ticket_from_analyses(
         except (ValueError, TypeError):
             pass
     # If total odds are too low, drop the lowest-odds pick and keep the rest
-    if total_odds < 2.80 and len(candidates) > min_picks:
+    if total_odds < 2.20 and len(candidates) > min_picks:
         candidates.sort(key=lambda x: float(x.get("odds", "1") if x.get("odds") != "N/A" else "1"))
         candidates.pop(0)  # Remove lowest odds pick
         candidates.sort(key=lambda x: x.get("_score", 0), reverse=True)  # Re-sort by score
@@ -584,8 +586,8 @@ def _evaluate_bet_candidate(
         if real_odd < min_odds or real_odd > max_odds:
             return None
         display_odds = str(real_odd)
-        # Value check: real odds should be ≥ fair odds (positive expected value)
-        if fair_odds > 0 and real_odd < fair_odds * 0.92:
+        # Value check: real odds should be close to or above fair odds
+        if fair_odds > 0 and real_odd < fair_odds * 0.85:
             # Real odds significantly below fair odds = negative value, skip
             return None
     elif fair_odds > 0:

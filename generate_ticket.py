@@ -225,7 +225,7 @@ async def generate_all_tickets():
             matches=matches[:15],
             analyses=analyses_map,
             max_picks=4,
-            min_picks=2,
+            min_picks=2 if cat_name == "mixed" else 1,
             mixed=(cat_name == "mixed"),
         )
 
