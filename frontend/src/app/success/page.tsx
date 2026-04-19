@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Script from "next/script";
 import { useAuth } from "@/lib/AuthContext";
 import { Suspense } from "react";
 
@@ -84,6 +85,19 @@ function SuccessContent() {
         {sessionId && (
           <p className="mt-6 text-xs text-slate-600">Session: {sessionId}</p>
         )}
+        {/* Google Ads conversion tracking */}
+        <Script id="gtag-conversion" strategy="afterInteractive">
+          {`
+            if (typeof gtag === 'function') {
+              gtag('event', 'conversion', {
+                'send_to': 'AW-18092407509/lw_WCIus6JwcENX1kLND',
+                'value': 1.0,
+                'currency': 'RON',
+                'transaction_id': '${sessionId || ""}'
+              });
+            }
+          `}
+        </Script>
       </div>
     </div>
   );
