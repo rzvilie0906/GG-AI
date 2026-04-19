@@ -407,60 +407,82 @@ def build_ticket_from_analyses(
     Also considers secondary bets when they have good confidence (≥ 65%)
     and the main bet doesn't qualify.
     """
-    MIN_PROBABILITY = 58       # Confident picks (covers basketball/hockey typical ranges)
-    MIN_ODDS = 1.20            # Allows strong favorites common in NBA/NHL
-    MAX_ODDS = 3.00            # No risky longshots
-    SECONDARY_MIN_PROB = 65    # Secondary bets need solid confidence
+    # ── Filter tiers: strict first, then relax if not enough candidates ──
+    FILTER_TIERS = [
+        # Tier 0 (strict): original thresholds
+        {"min_prob": 58, "min_odds": 1.20, "max_odds": 3.00, "sec_min_prob": 65, "value_ratio": 0.85},
+        # Tier 1 (relaxed): lower probability, wider odds range
+        {"min_prob": 50, "min_odds": 1.15, "max_odds": 3.50, "sec_min_prob": 55, "value_ratio": 0.75},
+        # Tier 2 (permissive): accept any reasonable pick
+        {"min_prob": 40, "min_odds": 1.10, "max_odds": 4.00, "sec_min_prob": 45, "value_ratio": 0.0},
+    ]
 
     candidates = []
 
-    for m in matches:
-        home = m["home_team"]
-        away = m["away_team"]
-        sport = m["sport"]
-        league = m["league_name"]
+    for tier_idx, tier in enumerate(FILTER_TIERS):
+        if candidates and len(candidates) >= min_picks:
+            break  # Already have enough from a stricter tier
 
-        # Find the analysis for this match
-        analysis = None
-        for key, val in analyses.items():
-            if home.lower().replace(" ", "_") in key and away.lower().replace(" ", "_") in key:
-                analysis = val
-                break
-        # Fallback: partial match on home team
-        if not analysis:
-            home_lower = home.lower().replace(" ", "_")
+        MIN_PROBABILITY = tier["min_prob"]
+        MIN_ODDS = tier["min_odds"]
+        MAX_ODDS = tier["max_odds"]
+        SECONDARY_MIN_PROB = tier["sec_min_prob"]
+        VALUE_RATIO = tier["value_ratio"]
+
+        candidates = []  # Reset for this tier
+
+        for m in matches:
+            home = m["home_team"]
+            away = m["away_team"]
+            sport = m["sport"]
+            league = m["league_name"]
+
+            # Find the analysis for this match
+            analysis = None
             for key, val in analyses.items():
-                if home_lower in key:
+                if home.lower().replace(" ", "_") in key and away.lower().replace(" ", "_") in key:
                     analysis = val
                     break
+            # Fallback: partial match on home team
+            if not analysis:
+                home_lower = home.lower().replace(" ", "_")
+                for key, val in analyses.items():
+                    if home_lower in key:
+                        analysis = val
+                        break
 
-        if not analysis:
-            continue
+            if not analysis:
+                continue
 
-        canonical = extract_canonical_prediction(analysis)
+            canonical = extract_canonical_prediction(analysis)
 
-        # Try main bet first
-        candidate = _evaluate_bet_candidate(
-            canonical["main_market"], canonical["main_pick"],
-            canonical["main_probability"], canonical["main_fair_odds"],
-            canonical["main_reasoning"],
-            sport, home, away, league, MIN_PROBABILITY, MIN_ODDS, MAX_ODDS
-        )
-        if candidate:
-            candidates.append(candidate)
-            continue
-
-        # If main bet didn't qualify, check secondary bets for very-high-confidence picks
-        for sb in canonical.get("secondary_bets", []):
+            # Try main bet first
             candidate = _evaluate_bet_candidate(
-                sb["market"], sb["pick"],
-                sb["probability"], sb["fair_odds"],
-                [],
-                sport, home, away, league, SECONDARY_MIN_PROB, MIN_ODDS, MAX_ODDS
+                canonical["main_market"], canonical["main_pick"],
+                canonical["main_probability"], canonical["main_fair_odds"],
+                canonical["main_reasoning"],
+                sport, home, away, league, MIN_PROBABILITY, MIN_ODDS, MAX_ODDS,
+                value_ratio=VALUE_RATIO
             )
             if candidate:
                 candidates.append(candidate)
-                break  # Only take one secondary per match
+                continue
+
+            # If main bet didn't qualify, check secondary bets
+            for sb in canonical.get("secondary_bets", []):
+                candidate = _evaluate_bet_candidate(
+                    sb["market"], sb["pick"],
+                    sb["probability"], sb["fair_odds"],
+                    [],
+                    sport, home, away, league, SECONDARY_MIN_PROB, MIN_ODDS, MAX_ODDS,
+                    value_ratio=VALUE_RATIO
+                )
+                if candidate:
+                    candidates.append(candidate)
+                    break  # Only take one secondary per match
+
+        if tier_idx > 0 and len(candidates) >= min_picks:
+            print(f"[INFO] Used relaxed filter tier {tier_idx} to get {len(candidates)} candidates (min_prob={MIN_PROBABILITY}, odds={MIN_ODDS}-{MAX_ODDS})")
 
     # Rank by composite score: confidence + value + odds sweet-spot bonus
     # Favors picks in the 1.50-2.20 odds range (good payout AND safe)
@@ -562,6 +584,7 @@ def _evaluate_bet_candidate(
     reasoning: list,
     sport: str, home: str, away: str, league: str,
     min_probability: float, min_odds: float, max_odds: float,
+    value_ratio: float = 0.85,
 ) -> dict | None:
     """Evaluate a single bet (main or secondary) and return a candidate dict or None."""
     if isinstance(prob, str):
@@ -587,7 +610,7 @@ def _evaluate_bet_candidate(
             return None
         display_odds = str(real_odd)
         # Value check: real odds should be close to or above fair odds
-        if fair_odds > 0 and real_odd < fair_odds * 0.85:
+        if fair_odds > 0 and value_ratio > 0 and real_odd < fair_odds * value_ratio:
             # Real odds significantly below fair odds = negative value, skip
             return None
     elif fair_odds > 0:
