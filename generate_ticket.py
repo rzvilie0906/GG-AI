@@ -201,8 +201,8 @@ async def generate_all_tickets():
         
         # Pauză între faza de analiză și generarea biletului pentru a evita rate limits
         if analyze_ok > 0:
-            print("⏳ Pauză 10s între analize și generarea biletului...")
-            await asyncio.sleep(10)
+            print("⏳ Pauză 30s între analize și generarea biletului...")
+            await asyncio.sleep(30)
 
         # ── Build ticket from canonical analyses (no second LLM call) ──
         # Load all saved analyses for today's matches
