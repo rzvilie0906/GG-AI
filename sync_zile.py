@@ -1,6 +1,7 @@
 import sqlite3
 import requests
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 SPORT_LEAGUES = {
     "football": {
@@ -58,7 +59,7 @@ def sync_urmatoarele_7_zile():
     total_meciuri = 0
     
     for i in range(7):
-        target_date = datetime.now() + timedelta(days=i)
+        target_date = datetime.now(ZoneInfo("Europe/Bucharest")) + timedelta(days=i)
         date_str = target_date.strftime("%Y%m%d")
         
         for sport, data in SPORT_LEAGUES.items():
@@ -135,14 +136,17 @@ def sync_urmatoarele_7_zile():
                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """, (internal_id, sport, league, league_name, start_time, status, home_team, away_team, "espn", event_id, search_text))
                                 total_meciuri += 1
-                except:
-                    pass
+                except Exception as exc:
+                    print(f"⚠️ Eroare ESPN pentru {sport}/{league}/{date_str}: {exc}")
                     
     conn.commit()
     conn.close()
     print("=========================================================")
     print(f"✅ GATA! Baza de date a fost populată cu {total_meciuri} meciuri pentru următoarele 7 zile.")
     print("=========================================================")
+
+    if total_meciuri == 0:
+        raise RuntimeError("ESPN nu a returnat niciun meci; sincronizarea este invalidă.")
 
 if __name__ == "__main__":
     sync_urmatoarele_7_zile()

@@ -174,7 +174,7 @@ def main():
         print("✅ [OK] Meciurile au fost descărcate cu succes.")
     except Exception as e:
         print(f"❌ [EROARE CRITICĂ] sync_zile.py a eșuat: {e}")
-        return
+        raise
 
     if skip_odds:
         print("\n⏭️ PASUL 2: SKIP sync_odds.py (--skip-odds flag)")
@@ -202,6 +202,8 @@ def main():
         _upload_sync_data_to_firestore(skip_odds=skip_odds)
     except Exception as e:
         print(f"⚠️ [WARN] Upload Firestore eșuat (non-fatal): {e}")
+        if os.environ.get("CI", "").lower() == "true":
+            raise
 
     # ── Auto-generate daily tickets immediately after sync ──
     print("\n▶️ PASUL 4: Generare bilete zilnice ...")

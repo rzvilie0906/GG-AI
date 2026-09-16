@@ -26,14 +26,27 @@ jobs:
             echo "::error::FIREBASE_SERVICE_ACCOUNT secret is empty or not set"
             exit 1
           fi
-          echo "$FIREBASE_SA" | base64 -d > firebase-service-account.json
-          python -c "import json; json.load(open('firebase-service-account.json')); print('Firebase SA JSON is valid')" || {
-            echo "::error::firebase-service-account.json is not valid JSON after base64 decode"
-            exit 1
-          }
+          python - <<'PY'
+          import base64
+          import json
+          import os
+
+          value = os.environ["FIREBASE_SA"].strip()
+          try:
+              decoded = base64.b64decode(value, validate=True).decode("utf-8")
+              json.loads(decoded)
+          except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+              decoded = value
+              json.loads(decoded)
+          with open("firebase-service-account.json", "w", encoding="utf-8") as file:
+              file.write(decoded)
+          print("Firebase SA JSON is valid")
+          PY
         env:
           FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       - name: Run sync script
-        env: 
+        env:
           ODDS_API_KEYS: ${{ secrets.ODDS_API_KEYS }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_KEY: firebase-service-account.json
         run: python auto_sync_master.py
