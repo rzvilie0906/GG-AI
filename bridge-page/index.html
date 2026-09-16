@@ -691,7 +691,7 @@
         <!-- Performance Metric -->
         <div class="chart-card fade-up">
           <div class="chart-header">
-            <span class="chart-title">Performanță Analize AI — Aprilie 2026</span>
+            <span class="chart-title">Performanță Analize AI — <span id="perf-month-year">Aprilie 2026</span></span>
             <span class="chart-trend">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17l5-5 4 4 6-8" /><path d="M17 8h5v5" /></svg>
               În creștere
@@ -727,6 +727,22 @@
       </div>
     </div>
   </section>
+
+  <script>
+    (function setPerfMonth() {
+      try {
+        const el = document.getElementById('perf-month-year');
+        if (!el) return;
+        const months = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+        const now = new Date();
+        const month = months[now.getMonth()];
+        const year = now.getFullYear();
+        el.textContent = month + ' ' + year;
+      } catch (e) {
+        // silent
+      }
+    })();
+  </script>
 
   <!-- ═══ FEATURES ═══ -->
   <section id="cum-functioneaza" class="features-section">
